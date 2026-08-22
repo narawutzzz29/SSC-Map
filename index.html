@@ -827,6 +827,10 @@ button, input, select { font-family: inherit; }
 .btn-row .btn { flex: 1; }
 
 .filters { flex: none; padding: 12px; display: flex; flex-direction: column; gap: 9px; border-bottom: 1px solid var(--line); }
+.searchbox { flex: none; padding: 12px; border-bottom: 1px solid var(--line); }
+/* บนจอใหญ่ ทุกหน้าต่อกันเป็นคอลัมน์เดียวเหมือนเดิม */
+.pane { display: contents; }
+.sheet-bar, .kpis-m, .grab { display: none; }
 .fl { display: flex; flex-direction: column; gap: 4px; }
 .fl > span { font-size: 10.5px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
 .fl input, .fl select, .ff input, .ff select, .ff textarea {
@@ -1030,24 +1034,56 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
   .main { flex-direction: column; }
   .rail {
     width: 100%; border-right: none; position: absolute; left: 0; right: 0; bottom: 0;
-    max-height: 62vh; border-top: 1px solid var(--line-firm);
+    height: 76vh; height: 76dvh; max-height: 76vh; border-top: 1px solid var(--line-firm);
     border-radius: 16px 16px 0 0; box-shadow: var(--shadow-2); z-index: 900;
   }
-  .rail.tuck { transform: translateY(calc(100% - 52px)); }
-  .grab { display: flex !important; }
-  /* บนมือถือ แถบรายชื่อกินพื้นที่ด้านล่าง จึงย้ายปุ่มลอยไปมุมขวาบน */
-  .card { top: 10px; left: 10px; right: 62px; width: auto; }
+  .rail.tuck { transform: translateY(calc(100% - 46px)); }
+  .sheet-bar { display: flex; }
+  .grab { display: flex; }
+  .kpis-m { display: flex; }
+  /* บนมือถือแสดงทีละหน้า แต่ละหน้าเลื่อนดูได้เต็มความสูง */
+  .pane { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .pane.on { display: flex; }
+  .pane[data-pane="menu"], .pane[data-pane="filter"] { padding-bottom: 12px; }
+  .filters, .legend, .searchbox, .rail-top { flex: none; }
+  .list { flex: 1 1 auto; }
+  /* ชิปตัวกรองบนมือถือให้ใหญ่พอนิ้วกด */
+  .chipbtn { padding: 6px 11px 6px 6px; font-size: 12.5px; }
+  .chipbtn.mini { padding: 6px 11px; font-size: 12px; }
+  .lg-row { gap: 7px; }
+  /* บนมือถือ แถบรายชื่อกินพื้นที่ด้านล่าง จึงย้ายปุ่มลอยไปเรียงแถวบนขวา */
   .leaflet-control-zoom { display: none; }   /* บนมือถือใช้นิ้วซูมได้ ไม่ต้องมีปุ่ม */
   .fab { top: 10px; right: 10px; bottom: auto; }
-  #basemap { top: 58px; right: 10px; bottom: auto; }
+  #basemap { top: 10px; right: 58px; bottom: auto; }
+  .card { top: 58px; left: 10px; right: 10px; width: auto; }
 }
+/* ---------- แถบแท็บของบานล่างบนมือถือ ---------- */
+.sheet-bar {
+  flex: none; align-items: stretch; background: var(--surface);
+  border-bottom: 1px solid var(--line); border-radius: 16px 16px 0 0; overflow: hidden;
+}
+.rtabs { display: flex; flex: 1; min-width: 0; }
+.rtab {
+  flex: 1; min-width: 0; border: none; background: none; cursor: pointer;
+  padding: 13px 4px 11px; font-family: inherit; font-size: 13px; font-weight: 600;
+  color: var(--muted); border-bottom: 2px solid transparent;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+}
+.rtab.on { color: var(--p1); border-bottom-color: var(--p1); }
+.rtab .badge {
+  min-width: 17px; padding: 0 5px; border-radius: 999px; background: var(--p1); color: #fff;
+  font-size: 10.5px; font-weight: 700; line-height: 17px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+.rtab .badge[hidden] { display: none; }
 .grab {
-  flex: none;
-  display: none; align-items: center; justify-content: center; gap: 8px;
-  padding: 9px; border: none; background: var(--surface); color: var(--ink-2);
-  font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: 16px 16px 0 0;
-  border-bottom: 1px solid var(--line);
+  flex: none; width: 46px;
+  align-items: center; justify-content: center;
+  padding: 0 6px; border: none; background: none; color: var(--ink-2);
+  font-size: 13px; font-weight: 600; cursor: pointer;
 }
+.kpis-m { padding: 0 12px 12px; gap: 8px; }
+.kpis-m .kpi { flex: 1; min-width: 0; text-align: center; }
 </style>
 
 <div class="app">
@@ -1055,7 +1091,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v12</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v13</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1066,26 +1102,49 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
 
   <div class="main">
     <aside class="rail" id="rail">
-      <button class="grab" id="grab">▲ รายชื่อลูกค้า</button>
-      <div class="rail-top">
-        <button class="btn primary" id="add">เพิ่มลูกค้า</button>
-        <div class="btn-row">
-          <button class="btn" id="refresh" title="ดึงข้อมูลล่าสุดที่เพื่อนร่วมงานเพิ่งบันทึก">รีเฟรช</button>
-          <button class="btn" id="opensheet" title="เปิดตารางข้อมูลใน Google Sheets">เปิดชีต</button>
+      <div class="sheet-bar">
+        <div class="rtabs" role="tablist">
+          <button class="rtab on" data-t="list" role="tab" aria-selected="true">รายชื่อ</button>
+          <button class="rtab" data-t="filter" role="tab" aria-selected="false">ตัวกรอง<span class="badge" id="fcount" hidden>0</span></button>
+          <button class="rtab" data-t="menu" role="tab" aria-selected="false">เมนู</button>
         </div>
-        <div class="btn-row">
-          <button class="btn" id="imp">นำเข้า</button>
-          <button class="btn" id="exp">ส่งออก</button>
+        <button class="grab" id="grab" aria-label="เปิดหรือปิดแถบด้านล่าง">▲</button>
+      </div>
+
+      <div class="pane" data-pane="menu">
+        <div class="rail-top">
+          <button class="btn primary" id="add">เพิ่มลูกค้า</button>
+          <div class="btn-row">
+            <button class="btn" id="refresh" title="ดึงข้อมูลล่าสุดที่เพื่อนร่วมงานเพิ่งบันทึก">รีเฟรช</button>
+            <button class="btn" id="opensheet" title="เปิดตารางข้อมูลใน Google Sheets">เปิดชีต</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="imp">นำเข้า</button>
+            <button class="btn" id="exp">ส่งออก</button>
+          </div>
+          <input id="file" type="file" accept="application/json,.json" hidden>
         </div>
-        <input id="file" type="file" accept="application/json,.json" hidden>
+        <div class="kpis-m">
+          <div class="kpi"><div class="v num" id="m-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
+          <div class="kpi"><div class="v num" id="m-prov">0</div><div class="l">จังหวัด</div></div>
+          <div class="kpi"><div class="v num" id="m-show">0</div><div class="l">แสดงอยู่</div></div>
+        </div>
       </div>
-      <div class="filters">
-        <label class="fl"><span>ค้นหา</span><input id="q" type="search" placeholder="ชื่อ / เบอร์ / รุ่น / SSC"></label>
-        <label class="fl"><span>เขต</span><select id="f-zone"><option value="">ทุกเขต</option></select></label>
-        <label class="fl"><span>SSC</span><select id="f-ssc"><option value="">ทุก SSC</option></select></label>
+
+      <div class="pane" data-pane="filter">
+        <div class="filters">
+          <label class="fl"><span>เขต</span><select id="f-zone"><option value="">ทุกเขต</option></select></label>
+          <label class="fl"><span>SSC</span><select id="f-ssc"><option value="">ทุก SSC</option></select></label>
+        </div>
+        <div class="legend" id="legend"></div>
       </div>
-      <div class="legend" id="legend"></div>
-      <div class="list" id="list"></div>
+
+      <div class="pane on" data-pane="list">
+        <div class="searchbox">
+          <label class="fl"><span>ค้นหา</span><input id="q" type="search" placeholder="ชื่อ / เบอร์ / ที่อยู่ / รุ่น / SSC"></label>
+        </div>
+        <div class="list" id="list"></div>
+      </div>
     </aside>
 
     <div class="mapwrap">
@@ -1278,7 +1337,7 @@ const $ = id => document.getElementById(id);
 /* ==========================================================
    ตั้งค่าเพียงบรรทัดเดียว: วางลิงก์ /exec ของ Apps Script ตรงนี้
    ========================================================== */
-const API_URL = "https://script.google.com/macros/s/AKfycbwo0hnMJo-gfyM0DLmkcP8LbNf5Lhi83A80t6LDQQpD2zSW374HZxdZ10l5ujW1XPwv6A/exec";
+const API_URL = "__PASTE_YOUR_EXEC_URL_HERE__";
 /* ========================================================== */
 
 let DATA = [], MODE = "sheet", busy = false;
@@ -1682,9 +1741,14 @@ function render() {
       </button>`).join("");
     list.querySelectorAll(".row").forEach(r => r.onclick = () => select(r.dataset.id));
   }
-  $("k-all").textContent = DATA.length;
-  $("k-prov").textContent = new Set(DATA.map(c => c.province).filter(Boolean)).size;
-  $("k-show").textContent = vis.length;
+  const nProv = new Set(DATA.map(c => c.province).filter(Boolean)).size;
+  [["all", DATA.length], ["prov", nProv], ["show", vis.length]].forEach(([k, v]) => {
+    $("k-" + k).textContent = v;
+    $("m-" + k).textContent = v;
+  });
+  const nf = selProd.size + selMach.size + selBrand.size;
+  const fb = $("fcount");
+  fb.textContent = nf; fb.hidden = !nf;
 }
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]));
 const find = id => DATA.find(c => c.id === id);
@@ -1692,6 +1756,8 @@ const find = id => DATA.find(c => c.id === id);
 function select(id) {
   const c = find(id); if (!c) return;
   curId = id;
+  // บนมือถือ ย่อแถบลงเพื่อให้เห็นหมุดกับการ์ดข้อมูลเต็ม ๆ
+  if (innerWidth <= 820) setSheet(false);
   const deep = (typeof baseMode !== "undefined" && baseMode === "streets");
   map.flyTo([c.lat, c.lng], deep ? Math.max(map.getZoom(), 14) : Math.min(Math.max(map.getZoom(), 7.6), 8.6), { duration: .55 });
   litProvince(deep ? null : c.province);
@@ -2036,11 +2102,29 @@ $("file").onchange = ev => {
 };
 
 /* ---------------- แถบรายชื่อบนมือถือ ---------------- */
-$("grab").onclick = () => {
-  const r = $("rail"); r.classList.toggle("tuck");
-  $("grab").textContent = r.classList.contains("tuck") ? "▲ รายชื่อลูกค้า" : "▼ ซ่อนรายชื่อ";
-};
-if (innerWidth <= 820) $("rail").classList.add("tuck");
+/* ---------------- บานล่างบนมือถือ: 3 แท็บ ---------------- */
+function setSheet(open) {
+  const r = $("rail");
+  r.classList.toggle("tuck", !open);
+  $("grab").textContent = open ? "▼" : "▲";
+  $("grab").title = open ? "ย่อแถบลง" : "เปิดแถบขึ้น";
+}
+function showPane(name) {
+  document.querySelectorAll(".pane").forEach(p => p.classList.toggle("on", p.dataset.pane === name));
+  document.querySelectorAll(".rtab").forEach(t => {
+    const on = t.dataset.t === name;
+    t.classList.toggle("on", on);
+    t.setAttribute("aria-selected", on ? "true" : "false");
+  });
+}
+document.querySelectorAll(".rtab").forEach(t => t.onclick = () => {
+  const already = t.classList.contains("on");
+  showPane(t.dataset.t);
+  // แตะแท็บเดิมซ้ำตอนเปิดอยู่ = ย่อลง / แตะตอนย่ออยู่ = เปิดขึ้น
+  setSheet($("rail").classList.contains("tuck") ? true : !already);
+});
+$("grab").onclick = () => setSheet($("rail").classList.contains("tuck"));
+if (innerWidth <= 820) setSheet(false);
 
 /* ---------------- เริ่มทำงาน ---------------- */
 window.__cp = 9;

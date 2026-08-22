@@ -814,6 +814,7 @@ button, input, select { font-family: inherit; }
   border-radius: var(--r); padding: 8px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: .14s;
 }
+.btn[hidden] { display: none; }        /* กัน display:inline-flex ทับ attribute hidden */
 .btn:hover:not(:disabled) { border-color: var(--p1); color: var(--p1); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.primary { background: var(--p1); border-color: var(--p1); color: #fff; padding: 10px; font-size: 14px; font-weight: 700; }
@@ -828,11 +829,12 @@ button, input, select { font-family: inherit; }
 .filters { flex: none; padding: 12px; display: flex; flex-direction: column; gap: 9px; border-bottom: 1px solid var(--line); }
 .fl { display: flex; flex-direction: column; gap: 4px; }
 .fl > span { font-size: 10.5px; font-weight: 600; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
-.fl input, .fl select, .ff input, .ff select {
+.fl input, .fl select, .ff input, .ff select, .ff textarea {
   width: 100%; padding: 8px 10px; border: 1px solid var(--line-firm); border-radius: 8px;
   background: var(--sunken); color: var(--ink); font-size: 13px;
 }
-.fl input:focus, .fl select:focus, .ff input:focus, .ff select:focus {
+.ff textarea { resize: vertical; min-height: 44px; line-height: 1.5; }
+.fl input:focus, .fl select:focus, .ff input:focus, .ff select:focus, .ff textarea:focus {
   outline: 2px solid var(--p1); outline-offset: -1px; border-color: var(--p1);
 }
 
@@ -952,6 +954,17 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
 }
 .pick.set { border-style: solid; }
 .tip { font-size: 11.5px; color: var(--muted); }
+/* รายการที่อยู่ที่ค้นเจอ */
+.hits { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
+.hits[hidden] { display: none; }
+.hit {
+  text-align: left; width: 100%; padding: 8px 10px; border: 1px solid var(--line-firm);
+  border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 12.5px;
+  line-height: 1.45; cursor: pointer;
+}
+.hit:hover { border-color: var(--p1); background: var(--sunken); }
+.hit b { display: block; font-size: 13px; margin-bottom: 1px; }
+.hit span { color: var(--muted); }
 .tip.bad { color: var(--danger); font-weight: 600; }
 .tip.ok { color: var(--good); font-weight: 600; }
 
@@ -1027,7 +1040,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v9</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v10</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1089,6 +1102,13 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
         <div class="msg" id="m-name">กรุณากรอกชื่อลูกค้า</div>
       </div>
       <div class="ff"><label for="i-phone">เบอร์โทรศัพท์</label><input id="i-phone" type="tel" placeholder="081-234-5678"></div>
+      <div class="ff">
+        <label for="i-addr">ที่อยู่</label>
+        <textarea id="i-addr" rows="2" placeholder="เช่น 99 หมู่ 4 ต.บ้านกร่าง อ.เมือง พิษณุโลก"></textarea>
+        <button type="button" class="pick" id="i-find">ค้นหาตำแหน่งจากที่อยู่นี้</button>
+        <div class="hits" id="i-hits" hidden></div>
+        <div class="tip" id="a-tip">พิมพ์อย่างน้อย ตำบล อำเภอ จังหวัด แล้วกดค้นหา ระบบจะปักหมุดให้</div>
+      </div>
       <div class="pair">
         <div class="ff"><label for="i-prod">สินค้า <span class="req">*</span></label><select id="i-prod"></select></div>
         <div class="ff"><label for="i-model">รุ่น</label><input id="i-model" type="text" placeholder="เช่น KW-500"></div>
@@ -1222,7 +1242,7 @@ const $ = id => document.getElementById(id);
 /* ==========================================================
    ตั้งค่าเพียงบรรทัดเดียว: วางลิงก์ /exec ของ Apps Script ตรงนี้
    ========================================================== */
-const API_URL = "__PASTE_YOUR_EXEC_URL_HERE__";
+const API_URL = "https://script.google.com/macros/s/AKfycby8eKeEiKTniFLDF3a-gi0NC3uEPZ8AjlUGzu7foPTT6yHuIYhhLd-9ZbgK8TMRenB_MA/exec";
 /* ========================================================== */
 
 let DATA = [], MODE = "sheet", busy = false;
@@ -1556,7 +1576,7 @@ function visible() {
     if (z && c.zone !== z) return false;
     if (s && c.ssc !== s) return false;
     if (q) {
-      const hay = [c.name, c.phone, c.model, c.ssc, c.province, c.product, c.brand].filter(Boolean).join(" ").toLowerCase();
+      const hay = [c.name, c.phone, c.address, c.model, c.ssc, c.province, c.product, c.brand].filter(Boolean).join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -1609,6 +1629,7 @@ function select(id) {
       <div class="kv"><dt>รุ่น</dt><dd>${esc(c.model) || "-"}</dd></div>
       <div class="kv"><dt>SSC</dt><dd>${esc(c.ssc) || "-"}</dd></div>
       <div class="kv"><dt>จังหวัด</dt><dd>${esc(c.province) || "-"}${c.zone ? " · เขต" + esc(c.zone) : ""}</dd></div>
+      ${c.address ? `<div class="kv"><dt>ที่อยู่</dt><dd>${esc(c.address)}</dd></div>` : ""}
       <div class="kv"><dt>โทรศัพท์</dt><dd>${c.phone ? `<a href="tel:${tel}">${esc(c.phone)}</a>` : "-"}</dd></div>
       <div class="kv"><dt>พิกัด</dt><dd class="num coord">${(+c.lat).toFixed(4)}, ${(+c.lng).toFixed(4)}</dd></div>
     </dl>
@@ -1653,6 +1674,7 @@ $("i-gps").onclick = () => {
     markPicked(); showMe(latitude, longitude, accuracy); showGhost(latitude, longitude);
     map.setView([latitude, longitude], baseMode === "streets" ? 16 : 9);
     setTip(`ปักหมุดที่ตำแหน่งของคุณแล้ว (±${Math.round(accuracy)} ม.)`, "ok");
+    fillAddrFrom(latitude, longitude);
     done();
   }, msg => { setTip(msg, "bad"); done(); });
 };
@@ -1676,7 +1698,100 @@ map.on("click", e => {
   $("i-lat").value = e.latlng.lat.toFixed(6); $("i-lng").value = e.latlng.lng.toFixed(6);
   markPicked(); showGhost(e.latlng.lat, e.latlng.lng); setTip("ปักหมุดตามที่คลิกแล้ว", "ok");
   stopPick(); $("veil").classList.add("on");
+  fillAddrFrom(e.latlng.lat, e.latlng.lng);
 });
+
+/* ---------------- ค้นหาตำแหน่งจากที่อยู่ (ข้อมูลจาก OpenStreetMap) ----------------
+   ปฏิบัติตามกติกาของ Nominatim: ค้นเมื่อกดปุ่มเท่านั้น (ไม่ค้นทุกตัวอักษร),
+   เว้นระยะอย่างน้อย 1 วินาทีต่อครั้ง, และจำผลลัพธ์เดิมไว้ไม่ให้ถามซ้ำ            */
+const GEO_URL = "https://nominatim.openstreetmap.org/";
+let geoCache = {};
+try { geoCache = JSON.parse(localStorage.getItem("sscGeoCache") || "{}"); } catch (e) {}
+let geoLast = 0;
+
+async function geoFetch(path, params) {
+  const key = path + "?" + new URLSearchParams(params).toString();
+  if (geoCache[key]) return geoCache[key];
+  const wait = 1100 - (Date.now() - geoLast);
+  if (wait > 0) await new Promise(r => setTimeout(r, wait));
+  geoLast = Date.now();
+  const r = await fetch(GEO_URL + key);
+  if (!r.ok) throw new Error("บริการค้นหาที่อยู่ตอบกลับผิดปกติ (" + r.status + ")");
+  const j = await r.json();
+  geoCache[key] = j;
+  try { localStorage.setItem("sscGeoCache", JSON.stringify(geoCache)); } catch (e) {}
+  return j;
+}
+const geoSearch  = q => geoFetch("search",  { q, format: "jsonv2", countrycodes: "th", limit: 6, addressdetails: 1, "accept-language": "th" });
+const geoReverse = (lat, lng) => geoFetch("reverse", { lat, lon: lng, format: "jsonv2", zoom: 18, addressdetails: 1, "accept-language": "th" });
+
+/* ตัด "ประเทศไทย" กับรหัสไปรษณีย์ท้ายที่อยู่ออก ให้อ่านง่ายขึ้น */
+function tidyAddr(s) {
+  return String(s || "").split(",").map(x => x.trim())
+    .filter(x => x && x !== "ประเทศไทย" && x !== "Thailand" && !/^\d{5}$/.test(x))
+    .join(" ");
+}
+/* ดึงชื่อจังหวัดจากผลลัพธ์ ตัดคำว่า "จังหวัด" ออก */
+function provOf(a) {
+  const v = (a && (a.province || a.state || a.city)) || "";
+  return String(v).replace(/^จังหวัด\s*/, "").trim();
+}
+function setATip(msg, kind) { const t = $("a-tip"); t.textContent = msg; t.className = "tip" + (kind ? " " + kind : ""); }
+function hideHits() { const h = $("i-hits"); h.hidden = true; h.innerHTML = ""; }
+
+function usePlace(lat, lng, addr, prov) {
+  $("i-lat").value = (+lat).toFixed(6);
+  $("i-lng").value = (+lng).toFixed(6);
+  markPicked(); showGhost(+lat, +lng);
+  map.setView([+lat, +lng], baseMode === "streets" ? 16 : 12);
+  if (addr) $("i-addr").value = addr;
+  if (prov && !$("i-prov").value.trim()) $("i-prov").value = prov;
+  hideHits();
+  setTip("ปักหมุดตามที่อยู่แล้ว — ถ้าคลาดเคลื่อน ปรับด้วยการคลิกบนแผนที่ได้", "ok");
+}
+
+$("i-find").onclick = async () => {
+  const q = $("i-addr").value.trim();
+  if (q.length < 6) { setATip("พิมพ์ที่อยู่ให้ละเอียดกว่านี้ อย่างน้อยควรมี ตำบล อำเภอ จังหวัด", "bad"); return; }
+  const b = $("i-find");
+  b.disabled = true; b.textContent = "กำลังค้นหา…"; hideHits();
+  setATip("กำลังค้นหาที่อยู่นี้บนแผนที่…");
+  try {
+    const list = await geoSearch(q);
+    if (!list.length) { setATip("ไม่พบที่อยู่นี้ — ลองตัดบ้านเลขที่ออก เหลือแค่ ตำบล อำเภอ จังหวัด", "bad"); return; }
+    const h = $("i-hits");
+    h.innerHTML = "";
+    list.forEach(p => {
+      const parts = String(p.display_name || "").split(",").map(x => x.trim());
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "hit";
+      const head = document.createElement("b"); head.textContent = parts[0] || "ตำแหน่ง";
+      const rest = document.createElement("span"); rest.textContent = tidyAddr(parts.slice(1).join(", "));
+      btn.appendChild(head); btn.appendChild(rest);
+      btn.onclick = () => usePlace(p.lat, p.lon, tidyAddr(p.display_name), provOf(p.address));
+      h.appendChild(btn);
+    });
+    h.hidden = false;
+    setATip(list.length === 1 ? "พบ 1 ที่ — กดเพื่อปักหมุด" : `พบ ${list.length} ที่ — กดเลือกที่ที่ใช่`, "ok");
+  } catch (e) {
+    setATip("ค้นหาที่อยู่ไม่ได้ (ต้องต่ออินเทอร์เน็ต) — ปักหมุดบนแผนที่แทนได้", "bad");
+  } finally { b.disabled = false; b.textContent = "ค้นหาตำแหน่งจากที่อยู่นี้"; }
+};
+
+/* ปักหมุดแล้วยังไม่ได้กรอกที่อยู่ → ดึงที่อยู่จากพิกัดมาเติมให้ */
+async function fillAddrFrom(lat, lng) {
+  if ($("i-addr").value.trim()) return;
+  setATip("กำลังอ่านที่อยู่จากตำแหน่งนี้…");
+  try {
+    const r = await geoReverse(lat, lng);
+    if (r && r.display_name) {
+      $("i-addr").value = tidyAddr(r.display_name);
+      const pv = provOf(r.address);
+      if (pv && !$("i-prov").value.trim()) $("i-prov").value = pv;
+      setATip("เติมที่อยู่จากตำแหน่งให้แล้ว ตรวจสอบและแก้ไขได้", "ok");
+    } else setATip("อ่านที่อยู่จากตำแหน่งนี้ไม่ได้ พิมพ์เองได้เลย");
+  } catch (e) { setATip("อ่านที่อยู่อัตโนมัติไม่ได้ พิมพ์เองได้เลย"); }
+}
 
 /* ---------------- ฟอร์ม ---------------- */
 let editId = null;
@@ -1686,6 +1801,10 @@ function openForm(id) {
   $("sheet-title").textContent = c ? "แก้ไขข้อมูลลูกค้า" : "เพิ่มลูกค้าใหม่";
   $("i-name").value = c ? c.name : "";
   $("i-phone").value = c ? c.phone || "" : "";
+  $("i-addr").value = c ? c.address || "" : "";
+  hideHits();
+  setATip("พิมพ์อย่างน้อย ตำบล อำเภอ จังหวัด แล้วกดค้นหา ระบบจะปักหมุดให้");
+  $("i-find").disabled = false; $("i-find").textContent = "ค้นหาตำแหน่งจากที่อยู่นี้";
   $("i-prod").value = c ? c.product : Object.keys(PRODUCTS)[0];
   $("i-model").value = c ? c.model || "" : "";
   $("i-brand").value = c && c.brand && BRANDS[c.brand] ? c.brand : "อื่นๆ";
@@ -1745,7 +1864,8 @@ $("i-save").onclick = async () => {
     toast("กรุณาระบุตำแหน่งบนแผนที่", "bad"); return;
   }
   const rec = {
-    name, phone: $("i-phone").value.trim(), product: $("i-prod").value,
+    name, phone: $("i-phone").value.trim(), address: $("i-addr").value.trim(),
+    product: $("i-prod").value,
     brand: isRival({ product: $("i-prod").value }) ? $("i-brand").value : "",
     model: $("i-model").value.trim(), ssc: $("i-ssc").value,
     province: $("i-prov").value.trim(), zone: $("i-zone").value, lat, lng

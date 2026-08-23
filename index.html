@@ -981,6 +981,12 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
 .card-acts { display: flex; gap: 7px; margin-top: 7px; }
 .card-acts .btn { flex: 1; padding: 7px; font-size: 12.5px; }
 
+.leaflet-container .leaflet-control-attribution {
+  font-size: 10px; padding: 1px 6px; background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--muted); border-radius: 6px 0 0 0;
+}
+.leaflet-container .leaflet-control-attribution a { color: var(--muted); }
+
 /* ---------- รูปภาพ ---------- */
 .shots { display: flex; gap: 6px; overflow-x: auto; padding: 9px 0 2px; -webkit-overflow-scrolling: touch; }
 .shots img {
@@ -1196,7 +1202,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v30</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v32</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1701,8 +1707,10 @@ window.__cp = 3;
 const BOUNDS = L.latLngBounds([5.4, 97.0], [20.9, 106.0]);
 const map = L.map("map", {
   zoomControl: true, zoomSnap: 0, minZoom: 4.5, maxZoom: 19,
-  maxBounds: BOUNDS.pad(0.6), maxBoundsViscosity: 0.4, attributionControl: false
+  maxBounds: BOUNDS.pad(0.6), maxBoundsViscosity: 0.4, attributionControl: true
 });
+// เจ้าของภาพแผนที่บังคับให้แสดงเครดิต — ตัดโลโก้ Leaflet ออกให้เหลือเท่าที่จำเป็น
+map.attributionControl.setPrefix("");
 function frame() { map.invalidateSize(); map.fitBounds(BOUNDS, { padding: [8, 8] }); if (typeof tuneLabels === "function") tuneLabels(); }
 frame(); setTimeout(frame, 250);
 addEventListener("resize", () => map.invalidateSize());
@@ -1796,27 +1804,43 @@ function tuneLabels() {
 map.on("zoomend moveend", tuneLabels);
 tuneLabels();
 
-/* ---- สลับแผนที่ถนน (ออนไลน์) / แผนที่จังหวัด (ออฟไลน์) ---- */
-const streets = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" });
+/* ---- สลับแผนที่ 3 แบบ: ถนน / ดาวเทียม / จังหวัด (จังหวัดใช้ได้ตอนออฟไลน์) ---- */
+const streets = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  { maxZoom: 19, attribution: "© OpenStreetMap" });
+// ภาพถ่ายดาวเทียม + ชั้นชื่อสถานที่ทับด้านบน (ภาพเปล่า ๆ ดูไม่ออกว่าที่ไหน)
+const satImg = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 19, maxNativeZoom: 19, attribution: "ภาพถ่าย: Esri, Maxar, Earthstar Geographics" });
+const satTxt = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+  { maxZoom: 19, maxNativeZoom: 19, opacity: .9 });
+
+const BASES = ["streets", "sat", "provinces"];
+const BASE_BTN = {
+  streets:   { icon: "🛰️", tip: "เปลี่ยนเป็นภาพถ่ายดาวเทียม" },
+  sat:       { icon: "🗺️", tip: "เปลี่ยนเป็นแผนที่จังหวัด" },
+  provinces: { icon: "🛣️", tip: "เปลี่ยนเป็นแผนที่ถนน" }
+};
 let baseMode = "streets";
 try { baseMode = localStorage.getItem("sscBaseMode") || "streets"; } catch (e) {}
+if (BASES.indexOf(baseMode) < 0) baseMode = "streets";
+const onFlat = () => baseMode !== "provinces";     // สองแบบแรกซูมลึกได้ แบบจังหวัดซูมลึกไม่ได้
+
 function applyBase() {
-  const btn = document.getElementById("basemap");
-  if (baseMode === "streets") {
-    streets.addTo(map);
-    if (map.hasLayer(provLayer)) map.removeLayer(provLayer);
-    LABELS.forEach(o => { if (o.shown) { map.removeLayer(o.mk); o.shown = false; } });
-    if (btn) { btn.textContent = "🗺️"; btn.title = "เปลี่ยนเป็นแผนที่จังหวัด"; }
-  } else {
-    if (map.hasLayer(streets)) map.removeLayer(streets);
+  [streets, satImg, satTxt].forEach(l => { if (map.hasLayer(l)) map.removeLayer(l); });
+  if (baseMode === "provinces") {
     provLayer.addTo(map).bringToBack();
     tuneLabels();
-    if (btn) { btn.textContent = "🛣️"; btn.title = "เปลี่ยนเป็นแผนที่ถนน"; }
+  } else {
+    if (map.hasLayer(provLayer)) map.removeLayer(provLayer);
+    LABELS.forEach(o => { if (o.shown) { map.removeLayer(o.mk); o.shown = false; } });
+    if (baseMode === "sat") { satImg.addTo(map); satTxt.addTo(map); }
+    else streets.addTo(map);
   }
+  const btn = document.getElementById("basemap");
+  if (btn) { btn.textContent = BASE_BTN[baseMode].icon; btn.title = BASE_BTN[baseMode].tip; }
   try { localStorage.setItem("sscBaseMode", baseMode); } catch (e) {}
 }
 document.getElementById("basemap").onclick = () => {
-  baseMode = baseMode === "streets" ? "provinces" : "streets";
+  baseMode = BASES[(BASES.indexOf(baseMode) + 1) % BASES.length];
   applyBase();
   if (curId) { const c = find(curId); if (c) litProvince(baseMode === "provinces" ? c.province : null); }
 };
@@ -2112,7 +2136,7 @@ function select(id) {
   curId = id;
   // บนมือถือ ย่อแถบลงเพื่อให้เห็นหมุดกับการ์ดข้อมูลเต็ม ๆ
   if (innerWidth <= 820 && hasPin(c)) setSheet(false);
-  const deep = (typeof baseMode !== "undefined" && baseMode === "streets");
+  const deep = (typeof onFlat === "function" ? onFlat() : false);
   if (hasPin(c)) map.flyTo([c.lat, c.lng], deep ? Math.max(map.getZoom(), 14) : Math.min(Math.max(map.getZoom(), 7.6), 8.6), { duration: .55 });
   litProvince(deep ? null : c.province);
   $("c-tag").textContent = (c.product || "-")
@@ -2250,7 +2274,7 @@ $("i-gps").onclick = () => {
   locate(({ latitude, longitude, accuracy }) => {
     $("i-lat").value = latitude.toFixed(6); $("i-lng").value = longitude.toFixed(6);
     markPicked(); showMe(latitude, longitude, accuracy); showGhost(latitude, longitude);
-    map.setView([latitude, longitude], baseMode === "streets" ? 16 : 9);
+    map.setView([latitude, longitude], onFlat() ? 16 : 9);
     setTip(`ปักหมุดที่ตำแหน่งของคุณแล้ว (±${Math.round(accuracy)} ม.)`, "ok");
     fillAddrFrom(latitude, longitude);
     done();
@@ -2258,7 +2282,7 @@ $("i-gps").onclick = () => {
 };
 $("locate").onclick = () => {
   const f = $("locate"); f.textContent = "…";
-  locate(({ latitude, longitude, accuracy }) => { showMe(latitude, longitude, accuracy); map.setView([latitude, longitude], baseMode === "streets" ? 15 : 8.5); f.textContent = "◎"; },
+  locate(({ latitude, longitude, accuracy }) => { showMe(latitude, longitude, accuracy); map.setView([latitude, longitude], onFlat() ? 15 : 8.5); f.textContent = "◎"; },
          msg => { toast(msg, "bad"); f.textContent = "◎"; });
 };
 function markPicked() { const p = $("i-pick"); p.classList.add("set"); p.textContent = "ปักหมุดแล้ว (คลิกเพื่อเปลี่ยน)"; }
@@ -2325,7 +2349,7 @@ function usePlace(lat, lng, addr, prov) {
   $("i-lat").value = (+lat).toFixed(6);
   $("i-lng").value = (+lng).toFixed(6);
   markPicked(); showGhost(+lat, +lng);
-  map.setView([+lat, +lng], baseMode === "streets" ? 16 : 12);
+  map.setView([+lat, +lng], onFlat() ? 16 : 12);
   if (addr) $("i-addr").value = addr;
   if (prov && !$("i-prov").value.trim()) $("i-prov").value = prov;
   hideHits();

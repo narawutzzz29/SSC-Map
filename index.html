@@ -1169,7 +1169,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v28</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v29</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1417,8 +1417,8 @@ const TH_ADDR = [["กระบี่",[["คลองท่อม",[["คลอ
 const PRODUCTS = {
   "K-water":      { glyph: "solar",   color: "--p1" },
   "ลูกค้า":       { glyph: "tractor", color: "--p2", byMachine: true },
-  "สินค้าคู่แข่ง":  { glyph: "tractor", color: "--p3", byBrand: true },
-  "KFC":          { glyph: "person",  color: "--p4" }
+  "สินค้าคู่แข่ง":  { glyph: "tractor", color: "--p3", byBrand: true, byMachine: true },
+  "KFC":          { glyph: "person",  color: "--p4", byMachine: true }
 };
 // ผลิตภัณฑ์ของกลุ่ม "ลูกค้า" — สีส้มเหมือนกันหมด ต่างกันที่รูปสัญลักษณ์
 const MACHINES = {
@@ -1903,7 +1903,8 @@ SSC_LIST.forEach(s => $("f-ssc").innerHTML += `<option>${s}</option>`);
 $("i-prod").innerHTML = Object.keys(PRODUCTS).map(p => `<option>${p}</option>`).join("");
 $("i-ssc").innerHTML = SSC_LIST.map(s => `<option>${s}</option>`).join("");
 $("i-brand").innerHTML = Object.keys(BRANDS).map(b => `<option>${b}</option>`).join("");
-$("i-machine").innerHTML = Object.keys(MACHINES).map(m => `<option>${m}</option>`).join("");
+$("i-machine").innerHTML = '<option value="">— ไม่ระบุ —</option>' +
+  Object.keys(MACHINES).map(m => `<option>${m}</option>`).join("");
 $("i-zone").innerHTML = ZONES.map(z => `<option>${z}</option>`).join("");
 
 function drawLegend() {
@@ -2563,7 +2564,7 @@ function openForm(id) {
   $("i-prod").value = c ? c.product : Object.keys(PRODUCTS)[0];
   $("i-model").value = c ? c.model || "" : "";
   $("i-brand").value = c && c.brand && BRANDS[c.brand] ? c.brand : "อื่นๆ";
-  $("i-machine").value = c && c.machine && MACHINES[c.machine] ? c.machine : Object.keys(MACHINES)[0];
+  $("i-machine").value = c && c.machine && MACHINES[c.machine] ? c.machine : "";
   $("i-visit").value = c && c.visit ? c.visit : "";
   syncBrandField();
   $("i-ssc").value = c ? c.ssc || SSC_LIST[0] : SSC_LIST[0];

@@ -1202,7 +1202,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v33</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v34</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -2617,6 +2617,13 @@ async function fillAddrFrom(lat, lng) {
 
 /* ---------------- ฟอร์ม ---------------- */
 let editId = null;
+/* เบอร์ไทยขึ้นต้นด้วย 0 เสมอ ถ้าโดน Excel หรือชีตกินเลข 0 หน้าไป ให้เติมคืน */
+function fixPhone(v) {
+  const s = String(v === null || v === undefined ? "" : v).trim();
+  // ขึ้นต้นด้วย 1-9 และยาว 8-9 หลัก = เลข 0 หน้าหายไป (เบอร์ไทยขึ้นต้นด้วย 0 เสมอ)
+  return /^[1-9][0-9]{7,8}$/.test(s) ? "0" + s : s;
+}
+
 /* ---------------- รูปภาพ ---------------- */
 const PHOTO_MAX = 8;
 let keepPhotos = [];   // รหัสไฟล์เดิมที่ยังเก็บไว้
@@ -2954,7 +2961,7 @@ $("i-save").onclick = async () => {
   // พิกัดไม่บังคับ — แถวที่นำเข้าจาก Excel มักยังไม่มีพิกัด ต้องแก้ข้อมูลอื่นได้ก่อน
   const noPin = isNaN(lat) || isNaN(lng);
   const rec = {
-    name, phone: $("i-phone").value.trim(), address: $("i-addr").value.trim(),
+    name, phone: fixPhone($("i-phone").value), address: $("i-addr").value.trim(),
     product: $("i-prod").value,
     brand: isRival({ product: $("i-prod").value }) ? $("i-brand").value : "",
     machine: (PRODUCTS[$("i-prod").value] || {}).byMachine ? $("i-machine").value : "",
@@ -3286,6 +3293,7 @@ function impRecord(r) {
     const v = String(r[i] === undefined ? "" : r[i]).trim();
     if (v) rec[field] = v;
   });
+  rec.phone = fixPhone(rec.phone);
   if (RENAMED[rec.product]) rec.product = RENAMED[rec.product];
   if (!PRODUCTS[rec.product]) rec.product = Object.keys(PRODUCTS)[0];
   if (!MACHINES[rec.machine]) rec.machine = (PRODUCTS[rec.product] || {}).byMachine ? rec.machine : "";

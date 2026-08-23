@@ -1169,7 +1169,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v22</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v24</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1209,6 +1209,9 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
           <div class="btn-row">
             <button class="btn" id="imp">นำเข้า Excel</button>
             <button class="btn" id="exp">ส่งออก</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn" id="srvurl" title="ดู / คัดลอก / แก้ลิงก์เซิร์ฟเวอร์ที่เครื่องนี้ใช้อยู่">ลิงก์เซิร์ฟเวอร์</button>
           </div>
           <input id="file" type="file" accept="application/json,.json" hidden>
         </div>
@@ -1483,7 +1486,7 @@ const $ = id => document.getElementById(id);
 /* ==========================================================
    ตั้งค่าเพียงบรรทัดเดียว: วางลิงก์ /exec ของ Apps Script ตรงนี้
    ========================================================== */
-const API_URL = "https://script.google.com/macros/s/AKfycbxwtY4LlnkI8K8kqLODuhTxe5Jgu0cmEl0ZEzw5ovhYOiAax64FNjOWpuys2Cw30-aH0A/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwoU5wzYyGjdgHg98xccdpYQihj7uA_-YYdk7KmsB1XgLMznr2J7m4SpCr46EVlG9NWUw/exec";
 /* ========================================================== */
 
 let DATA = [], MODE = "sheet", busy = false;
@@ -1567,7 +1570,7 @@ async function initStore() {
       DATA = [];
       paintMode("เชื่อมต่อไม่ได้", "readonly");
       toast(e.message || "โหลดข้อมูลไม่สำเร็จ — กดรีเฟรชเพื่อลองใหม่", "bad");
-      showSetup(true);   // เปิดช่องให้แก้ลิงก์ได้ทันที ไม่ต้องรื้อไฟล์
+      showSetup("retry");   // เปิดช่องให้แก้ลิงก์ได้ทันที ไม่ต้องรื้อไฟล์
     }
   }
 }
@@ -1589,42 +1592,59 @@ async function reload(quiet) {
   } finally { setBusy(false); }
 }
 
-// หน้าตั้งค่าครั้งแรก (กรณียังไม่ได้ใส่ลิงก์ลงในไฟล์)
-function showSetup(retry) {
+// กล่องตั้งค่า / แก้ / คัดลอกลิงก์เซิร์ฟเวอร์  (mode: "" = ครั้งแรก, "retry" = ต่อไม่ติด, "edit" = เปิดเอง)
+function showSetup(mode) {
   if (document.getElementById("setup")) return;      // กันเปิดซ้อนกัน
-  if (!retry) paintMode("ยังไม่ได้ตั้งค่า", "readonly");
+  if (!mode) paintMode("ยังไม่ได้ตั้งค่า", "readonly");
+  const head = mode === "retry" ? "ต่อเซิร์ฟเวอร์ข้อมูลไม่ได้"
+             : mode === "edit"  ? "ลิงก์เซิร์ฟเวอร์ข้อมูล"
+             : "ตั้งค่าเซิร์ฟเวอร์ข้อมูล";
+  const lead = mode === "retry" ? 'ลิงก์ที่ใช้อยู่ตอนนี้เรียกข้อมูลไม่สำเร็จ ลองวางลิงก์ <b>/exec</b> ใหม่จาก Apps Script → Deploy → Manage deployments'
+             : mode === "edit"  ? 'นี่คือลิงก์ที่เครื่องนี้ใช้ดึงข้อมูลอยู่ กดปุ่ม <b>คัดลอกลิงก์</b> เพื่อเอาไปใช้กับเครื่องอื่น หรือแก้เป็นลิงก์ใหม่แล้วกดเชื่อมต่อ'
+             : 'วางลิงก์เว็บแอปของ Apps Script (ลงท้ายด้วย <b>/exec</b>) เพื่อเชื่อมกับ Google Sheet ของทีม';
+  const tip  = mode === "edit" ? 'ลิงก์ต้องลงท้ายด้วย <b>/exec</b> เท่านั้น ถ้าลงท้ายด้วย /dev จะใช้ได้แค่เครื่องเจ้าของบัญชี'
+             : 'ตอน Deploy ต้องตั้ง "Who has access" เป็น <b>Anyone</b> ไม่งั้นเครื่องอื่นจะเปิดไม่ได้';
   const v = document.createElement("div");
   v.className = "veil on";
   v.id = "setup";
-  v.innerHTML = '<div class="sheet"><div class="sheet-h"><h2>' +
-    (retry ? "ต่อเซิร์ฟเวอร์ข้อมูลไม่ได้" : "ตั้งค่าเซิร์ฟเวอร์ข้อมูล") + '</h2></div>' +
-    '<div class="sheet-b"><p style="margin:0;font-size:14px;color:var(--ink-2);line-height:1.7">' +
-    (retry
-      ? 'ลิงก์ที่ใช้อยู่ตอนนี้เรียกข้อมูลไม่สำเร็จ ลองวางลิงก์ <b>/exec</b> ใหม่จาก Apps Script → Deploy → Manage deployments'
-      : 'วางลิงก์เว็บแอปของ Apps Script (ลงท้ายด้วย <b>/exec</b>) เพื่อเชื่อมกับ Google Sheet ของทีม') + '</p>' +
+  v.innerHTML = '<div class="sheet"><div class="sheet-h"><h2>' + head + '</h2></div>' +
+    '<div class="sheet-b"><p style="margin:0;font-size:14px;color:var(--ink-2);line-height:1.7">' + lead + '</p>' +
     '<div class="ff"><label for="setup-url">ลิงก์ /exec</label>' +
     '<input id="setup-url" type="url" placeholder="https://script.google.com/macros/s/.../exec"></div>' +
-    '<div class="tip">' + (retry
-      ? 'ถ้าลิงก์ถูกแล้วยังไม่ได้ ให้ตรวจว่าตอน Deploy ตั้ง "Who has access" เป็น <b>Anyone</b>'
-      : 'ใส่ครั้งเดียวต่อเครื่อง หรือฝังไว้ในไฟล์ index.html เพื่อให้ทุกคนใช้ได้ทันที') + '</div></div>' +
+    '<div class="tip">' + tip + '</div></div>' +
     '<div class="sheet-f">' +
-    (retry ? '<button class="btn" id="setup-skip">ปิดหน้านี้</button>' : '') +
-    '<span style="flex:1"></span><button class="btn primary" id="setup-ok">เชื่อมต่อ</button></div></div>';
+    (mode ? '<button class="btn" id="setup-skip">ปิด</button>' : '') +
+    '<span style="flex:1"></span>' +
+    '<button class="btn" id="setup-copy">คัดลอกลิงก์</button>' +
+    '<button class="btn primary" id="setup-ok">เชื่อมต่อ</button></div></div>';
   document.body.appendChild(v);
-  const cur = (function () { try { return localStorage.getItem("sscApiUrl") || ""; } catch (e) { return ""; } })();
-  if (cur) document.getElementById("setup-url").value = cur;
+  const box = document.getElementById("setup-url");
+  box.value = apiBase() || "";
   const go = async () => {
-    const u = document.getElementById("setup-url").value.trim();
-    if (!/^https:\/\/script\.google\.com\/.*\/exec$/.test(u)) { toast("ลิงก์ต้องขึ้นต้นด้วย https://script.google.com และลงท้ายด้วย /exec", "bad"); return; }
+    const u = box.value.trim();
+    if (!/^https:\/\/script\.google\.com\/.*\/exec$/.test(u)) {
+      toast(/\/dev\s*$/.test(u)
+        ? "ลิงก์ /dev ใช้ได้แค่เครื่องเจ้าของบัญชี ต้องใช้ลิงก์ที่ลงท้ายด้วย /exec"
+        : "ลิงก์ต้องขึ้นต้นด้วย https://script.google.com และลงท้ายด้วย /exec", "bad");
+      return;
+    }
     try { localStorage.setItem("sscApiUrl", u); } catch (e) {}
     v.remove();
     await initStore(); render(); frame();
   };
   document.getElementById("setup-ok").onclick = go;
+  document.getElementById("setup-copy").onclick = async () => {
+    const u = box.value.trim();
+    if (!u) { toast("ยังไม่มีลิงก์ให้คัดลอก", "bad"); return; }
+    try { await navigator.clipboard.writeText(u); toast("คัดลอกลิงก์แล้ว", "ok"); }
+    catch (e) { box.select(); toast("กดค้างที่ช่องลิงก์แล้วเลือก คัดลอก", "bad"); }
+  };
   const skip = document.getElementById("setup-skip");
   if (skip) skip.onclick = () => v.remove();
-  document.getElementById("setup-url").addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  box.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
 }
+const srvBtn = document.getElementById("srvurl");
+if (srvBtn) srvBtn.onclick = () => showSetup("edit");
 
 /* ---------------- แจ้งเตือน ---------------- */
 let tTimer;

@@ -1202,7 +1202,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v32</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v33</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1245,6 +1245,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
           </div>
           <div class="btn-row">
             <button class="btn" id="srvurl" title="ดู / คัดลอก / แก้ลิงก์เซิร์ฟเวอร์ที่เครื่องนี้ใช้อยู่">ลิงก์เซิร์ฟเวอร์</button>
+            <button class="btn" id="pdiag" title="ตรวจว่าระบบรูปภาพพร้อมใช้หรือยัง">ตรวจระบบรูป</button>
           </div>
           <input id="file" type="file" accept="application/json,.json" hidden>
         </div>
@@ -1688,6 +1689,8 @@ function showSetup(mode) {
 }
 const srvBtn = document.getElementById("srvurl");
 if (srvBtn) srvBtn.onclick = () => showSetup("edit");
+const pdBtn = document.getElementById("pdiag");
+if (pdBtn) pdBtn.onclick = () => photoDiag();
 
 /* ---------------- แจ้งเตือน ---------------- */
 let tTimer;
@@ -2711,9 +2714,9 @@ $("lb").onclick = e => { if (e.target === $("lb")) lbClose(); };
 addEventListener("keydown", e => { if (e.key === "Escape" && $("lb").classList.contains("on")) lbClose(); });
 
 /**
- * ส่งรูปขึ้นเซิร์ฟเวอร์
- * รูปยาวเกินกว่าจะใส่ใน URL ได้ จึงยิงเป็นฟอร์ม POST เข้าเฟรมซ่อน
- * (อ่านคำตอบกลับข้ามโดเมนไม่ได้ จึงยืนยันผลด้วยการโหลดข้อมูลใหม่อีกที)
+ * ส่งรูปขึ้นเซิร์ฟเวอร์ (รูปยาวเกินกว่าจะใส่ใน URL จึงต้องใช้ POST)
+ * ทางแรกใช้ fetch เพราะอ่านคำตอบกลับได้ รู้เลยว่าติดตรงไหน
+ * ถ้าเบราว์เซอร์บล็อกข้ามโดเมน ค่อยถอยไปใช้ฟอร์มซ่อน (ส่งถึงแน่ แต่อ่านคำตอบไม่ได้)
  */
 function postForm(action, params) {
   return new Promise(resolve => {
@@ -2746,20 +2749,132 @@ function postForm(action, params) {
   });
 }
 
-/** บันทึกรูปทั้งหมดของลูกค้ารายนี้ คืนจำนวนรูปที่ควรมีหลังเสร็จ */
+/**
+ * ลองด้วยคำสั่งเปล่า ๆ ก่อนว่าเบราว์เซอร์ยอมให้อ่านคำตอบข้ามโดเมนไหม
+ * ต้องรู้ก่อนส่งรูปจริง ไม่งั้นถ้า fetch ส่งถึงแต่อ่านคำตอบไม่ได้
+ * แล้วเราไปส่งซ้ำด้วยฟอร์ม จะได้รูปซ้ำสองใบ
+ */
+let postMode = null;              // null = ยังไม่รู้, "fetch", "form"
+async function probePost() {
+  if (postMode) return postMode;
+  const base = (typeof apiBase === "function") ? apiBase() : "";
+  if (!base) return (postMode = "form");
+  try {
+    const r = await fetch(base, { method: "POST", body: new URLSearchParams({ action: "ping" }) });
+    await r.text();
+    postMode = "fetch";
+  } catch (e) { postMode = "form"; }
+  return postMode;
+}
+
+async function apiPost(action, params) {
+  const base = (typeof apiBase === "function") ? apiBase() : "";
+  if (!base) return { ok: false, error: "ยังไม่ได้ตั้งค่าลิงก์เซิร์ฟเวอร์" };
+  if (await probePost() === "form") {
+    const sent = await postForm(action, params || {});
+    return sent ? { ok: true, blind: true } : { ok: false, error: "ส่งข้อมูลไปเซิร์ฟเวอร์ไม่สำเร็จ" };
+  }
+  const body = new URLSearchParams(Object.assign({ action: action }, params || {}));
+  let txt = null;
+  try {
+    const r = await fetch(base, { method: "POST", body: body });
+    txt = await r.text();
+  } catch (e) {
+    // ส่งไปแล้วแต่อ่านคำตอบไม่ได้ — ห้ามส่งซ้ำ เดี๋ยวรูปซ้ำ
+    return { ok: false, error: "ส่งรูปแล้วแต่อ่านผลลัพธ์ไม่ได้ — กดรีเฟรชดูว่ารูปขึ้นหรือยัง" };
+  }
+  try {
+    const j = JSON.parse(txt);
+    if (j && j.ok) return j;
+    return { ok: false, error: (j && j.error) || "เซิร์ฟเวอร์ปฏิเสธคำสั่ง" };
+  } catch (e) {
+    if (/accounts\.google\.com|Sign in|Authorization|ต้องขออนุญาต/i.test(txt || ""))
+      return { ok: false, error: "เซิร์ฟเวอร์ขอให้ล็อกอินก่อน — ตอน Deploy ต้องตั้ง Who has access เป็น Anyone" };
+    return { ok: false, error: "เซิร์ฟเวอร์ตอบกลับมาไม่ใช่ข้อมูล — ส่วนใหญ่คือยังไม่ได้ Deploy โค้ดตัวใหม่" };
+  }
+}
+
+/** เซิร์ฟเวอร์รองรับรูปหรือยัง — ดูจากว่าข้อมูลที่ส่งกลับมามีช่อง photos ไหม */
+function srvHasPhotos() {
+  return !DATA.length || DATA.some(c => c.photos !== undefined);
+}
+
+/** บันทึกรูปทั้งหมดของลูกค้ารายนี้ */
 async function savePhotos(id) {
   const want = keepPhotos.length + pendPhotos.length;
-  if (!id || (!pendPhotos.length && !delPhotos.length)) return want;
+  if (!id || (!pendPhotos.length && !delPhotos.length)) return { want: want, errs: [] };
   const dels = delPhotos.slice(), adds = pendPhotos.slice();
   delPhotos = []; pendPhotos = [];
-  for (const fid of dels) await postForm("photoDel", { id: id, fid: fid });
+  const errs = [];
+  for (const fid of dels) {
+    const r = await apiPost("photoDel", { id: id, fid: fid });
+    if (!r.ok) errs.push(r.error);
+  }
   let i = 0;
   for (const ph of adds) {
     i++;
     toast(`กำลังอัปโหลดรูป ${i}/${adds.length}…`);
-    await postForm("photoAdd", { id: id, data: ph.data, name: ph.name });
+    const r = await apiPost("photoAdd", { id: id, data: ph.data, name: ph.name });
+    if (!r.ok) errs.push(r.error);
   }
-  return want;
+  return { want: want, errs: errs };
+}
+
+/* กล่องแสดงผลตรวจระบบ */
+function showDiag(html) {
+  let v = document.getElementById("diag");
+  if (!v) {
+    v = document.createElement("div");
+    v.className = "veil"; v.id = "diag";
+    v.innerHTML = '<div class="sheet"><div class="sheet-h"><h2>ผลตรวจระบบรูปภาพ</h2>' +
+      '<button class="x" id="diag-x2" aria-label="ปิด">✕</button></div>' +
+      '<div class="sheet-b" id="diag-b"></div>' +
+      '<div class="sheet-f"><span style="flex:1"></span><button class="btn primary" id="diag-x">ปิด</button></div></div>';
+    document.body.appendChild(v);
+    const shut = () => v.classList.remove("on");
+    v.querySelector("#diag-x").onclick = shut;
+    v.querySelector("#diag-x2").onclick = shut;
+  }
+  v.querySelector("#diag-b").innerHTML = html;
+  v.classList.add("on");
+}
+
+/** ไล่ตรวจทีละขั้นว่าระบบรูปภาพติดตรงไหน */
+async function photoDiag() {
+  showDiag('<p style="margin:0;font-size:13px;color:var(--ink-2)">กำลังตรวจ…</p>');
+  const li = [];
+  const add = (good, t) => li.push(`<li style="margin-bottom:7px">${good ? "✅" : "❌"} ${t}</li>`);
+  let stop = false;
+  try {
+    const pong = await api("ping");
+    add(true, "ต่อเซิร์ฟเวอร์ได้ · ชีต: " + (pong.sheet || "-"));
+    if (pong.ver === "photo-1") {
+      add(true, "Code.gs เป็นรุ่นที่รองรับรูปแล้ว");
+    } else {
+      add(false, "<b>Code.gs ยังเป็นรุ่นเก่า</b><br>วางโค้ดใหม่ → Ctrl+S → Deploy → Manage deployments → กดดินสอ → Version: <b>New version</b> → Deploy");
+      stop = true;
+    }
+  } catch (e) {
+    add(false, "ต่อเซิร์ฟเวอร์ไม่ได้: " + (e.message || ""));
+    stop = true;
+  }
+  if (!stop) {
+    try {
+      const t = await api("photoTest");
+      add(!!t.col, t.col ? "ชีตมีคอลัมน์ “รูปภาพ” แล้ว" : "ชีตยังไม่มีคอลัมน์ “รูปภาพ”");
+      add(!!t.drive, t.drive
+        ? "เข้าถึง Google Drive ได้ · โฟลเดอร์: " + t.folder
+        : "<b>เข้า Google Drive ไม่ได้</b><br>ยังไม่ได้อนุญาตสิทธิ์ Drive — เปิด Apps Script เลือกฟังก์ชัน <b>photoTest</b> แล้วกด <b>Run</b> หนึ่งครั้ง จะมีหน้าขออนุญาตขึ้นมา กด Allow ให้ครบ"
+        + (t.err ? '<br><small style="opacity:.7">' + t.err + "</small>" : ""));
+    } catch (e) {
+      add(false, "สั่งตรวจไม่ผ่าน: " + (e.message || ""));
+    }
+    const probe = await apiPost("ping", {});
+    add(!!probe.ok, probe.ok
+      ? "ส่งข้อมูลแบบ POST ได้ (ช่องทางอัปโหลดรูป)" + (probe.blind ? " · ใช้ทางสำรอง" : "")
+      : "<b>ส่งข้อมูลแบบ POST ไม่ได้</b><br>" + probe.error);
+  }
+  showDiag(`<ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7">${li.join("")}</ul>`);
 }
 
 function openForm(id) {
@@ -2861,12 +2976,23 @@ $("i-save").onclick = async () => {
       ? (isNew ? `เพิ่ม "${name}" แล้ว · ยังไม่ได้ปักหมุด` : "บันทึกแล้ว · ยังไม่ได้ปักหมุด")
       : (isNew ? `เพิ่ม "${name}" แล้ว · ทีมเห็นแล้ว` : "บันทึกการแก้ไขแล้ว · ทีมเห็นแล้ว"), noPin ? "" : "ok");
     if (busyPhotos) {
-      const want = await savePhotos(savedId);
-      await reload(true);
-      const got = photoIds(find(savedId)).length;
-      select(savedId);
-      if (got === want) toast(want ? `บันทึกรูปแล้ว ${want} รูป` : "ลบรูปแล้ว", "ok");
-      else toast(`อัปโหลดรูปได้ ${got} จาก ${want} รูป — ลองแก้ไขแล้วแนบใหม่อีกครั้ง`, "bad");
+      if (!srvHasPhotos()) {
+        pendPhotos = []; delPhotos = [];
+        toast("เซิร์ฟเวอร์ยังไม่รองรับรูปภาพ — ต้องอัปเดต Code.gs ก่อน", "bad");
+        photoDiag();
+      } else {
+        const res2 = await savePhotos(savedId);
+        await reload(true);
+        const got = photoIds(find(savedId)).length;
+        select(savedId);
+        // เช็คของจริงจากเซิร์ฟเวอร์เป็นหลัก — บางเบราว์เซอร์ส่งถึงแต่อ่านคำตอบกลับไม่ได้
+        if (got === res2.want) {
+          toast(res2.want ? `บันทึกรูปแล้ว ${res2.want} รูป` : "ลบรูปแล้ว", "ok");
+        } else {
+          toast(res2.errs[0] || `อัปโหลดรูปได้ ${got} จาก ${res2.want} รูป`, "bad");
+          photoDiag();      // เปิดผลตรวจให้เห็นเลยว่าติดตรงไหน
+        }
+      }
     }
   } catch (e) {
     toast("บันทึกไม่สำเร็จ: " + (e.message || "ลองใหม่อีกครั้ง"), "bad");

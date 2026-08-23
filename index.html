@@ -1169,7 +1169,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v26</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v27</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -2616,18 +2616,16 @@ $("i-save").onclick = async () => {
     $("w-name").classList.add("bad"); $("m-name").classList.add("on"); $("i-name").focus({ preventScroll: true });
     toast("กรุณากรอกชื่อลูกค้า", "bad"); return;
   }
-  if (isNaN(lat) || isNaN(lng)) {
-    setTip("ยังไม่ได้ระบุตำแหน่ง — กด GPS, คลิกบนแผนที่ หรือพิมพ์พิกัด", "bad");
-    $("i-gps").scrollIntoView({ block: "center", behavior: "smooth" });
-    toast("กรุณาระบุตำแหน่งบนแผนที่", "bad"); return;
-  }
+  // พิกัดไม่บังคับ — แถวที่นำเข้าจาก Excel มักยังไม่มีพิกัด ต้องแก้ข้อมูลอื่นได้ก่อน
+  const noPin = isNaN(lat) || isNaN(lng);
   const rec = {
     name, phone: $("i-phone").value.trim(), address: $("i-addr").value.trim(),
     product: $("i-prod").value,
     brand: isRival({ product: $("i-prod").value }) ? $("i-brand").value : "",
     machine: (PRODUCTS[$("i-prod").value] || {}).byMachine ? $("i-machine").value : "",
     model: $("i-model").value.trim(), ssc: $("i-ssc").value,
-    province: $("i-prov").value.trim(), zone: $("i-zone").value, lat, lng
+    province: $("i-prov").value.trim(), zone: $("i-zone").value,
+    lat: noPin ? "" : lat, lng: noPin ? "" : lng
   };
   const isNew = !editId;
   const btn = $("i-save"); btn.disabled = true; btn.textContent = "กำลังบันทึก…";
@@ -2638,7 +2636,9 @@ $("i-save").onclick = async () => {
     DATA = res.all;
     const savedId = res.id || editId;
     closeForm(); render(); select(savedId);
-    toast(isNew ? `เพิ่ม "${name}" แล้ว · ทีมเห็นแล้ว` : "บันทึกการแก้ไขแล้ว · ทีมเห็นแล้ว", "ok");
+    toast(noPin
+      ? (isNew ? `เพิ่ม "${name}" แล้ว · ยังไม่ได้ปักหมุด` : "บันทึกแล้ว · ยังไม่ได้ปักหมุด")
+      : (isNew ? `เพิ่ม "${name}" แล้ว · ทีมเห็นแล้ว` : "บันทึกการแก้ไขแล้ว · ทีมเห็นแล้ว"), noPin ? "" : "ok");
   } catch (e) {
     toast("บันทึกไม่สำเร็จ: " + (e.message || "ลองใหม่อีกครั้ง"), "bad");
   } finally { btn.disabled = false; btn.textContent = "บันทึก"; }

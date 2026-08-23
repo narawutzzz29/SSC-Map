@@ -981,6 +981,33 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
 .card-acts { display: flex; gap: 7px; margin-top: 7px; }
 .card-acts .btn { flex: 1; padding: 7px; font-size: 12.5px; }
 
+/* ---------- รูปภาพ ---------- */
+.shots { display: flex; gap: 6px; overflow-x: auto; padding: 9px 0 2px; -webkit-overflow-scrolling: touch; }
+.shots img {
+  width: 76px; height: 76px; flex: none; object-fit: cover; cursor: zoom-in;
+  border-radius: 9px; background: var(--line); border: 1px solid var(--line);
+}
+.pgrid { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
+.pcell { position: relative; width: 74px; height: 74px; }
+.pcell img { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; border: 1px solid var(--line); background: var(--line); }
+.pcell .rm {
+  position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; padding: 0;
+  border: 2px solid var(--card); border-radius: 50%; background: #d93f3f; color: #fff;
+  font-size: 13px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.pcell.wait img { opacity: .55; }
+.pcell .tag {
+  position: absolute; left: 3px; bottom: 3px; padding: 1px 5px; border-radius: 5px;
+  background: rgba(6,12,18,.72); color: #fff; font-size: 10px; font-weight: 700;
+}
+.lb { display: none; position: fixed; inset: 0; z-index: 6000; background: rgba(6,12,18,.9); }
+.lb.on { display: flex; align-items: center; justify-content: center; padding: 16px; }
+.lb img { max-width: 100%; max-height: 100%; border-radius: 10px; }
+.lb .x {
+  position: absolute; top: 12px; right: 12px; width: 40px; height: 40px; border-radius: 50%;
+  border: none; background: rgba(255,255,255,.16); color: #fff; font-size: 19px; cursor: pointer;
+}
+
 /* ---------- ฟอร์ม ---------- */
 .veil {
   display: none; position: fixed; inset: 0; background: rgba(6,12,18,.55);
@@ -1169,7 +1196,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v29</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v30</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1301,6 +1328,13 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
       </div>
       <datalist id="prov-list"></datalist>
       <div class="ff">
+        <label>รูปภาพ</label>
+        <button type="button" class="btn" id="i-padd">เพิ่มรูป (ถ่าย / เลือกจากเครื่อง)</button>
+        <input id="i-photo" type="file" accept="image/*" multiple hidden>
+        <div class="pgrid" id="i-pgrid"></div>
+        <div class="tip" id="i-ptip">แนบได้สูงสุด 8 รูปต่อลูกค้า 1 ราย · ระบบจะย่อรูปให้อัตโนมัติ</div>
+      </div>
+      <div class="ff">
         <label>ตำแหน่งบนแผนที่ <span class="req">*</span></label>
         <button type="button" class="btn gps" id="i-gps">ใช้ตำแหน่งปัจจุบันของฉัน (GPS)</button>
         <button type="button" class="pick" id="i-pick">หรือคลิกปักหมุดบนแผนที่เอง</button>
@@ -1319,6 +1353,9 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     </div>
   </div>
 </div>
+
+<!-- ดูรูปเต็มจอ -->
+<div class="lb" id="lb"><button class="x" id="lb-x" aria-label="ปิด">✕</button><img id="lb-img" alt="รูปลูกค้า"></div>
 
 <!-- นำเข้าจาก Excel -->
 <div class="veil" id="imp-veil">
@@ -2098,6 +2135,7 @@ function select(id) {
       <div class="kv"><dt>เข้าพบล่าสุด</dt><dd class="v-${visitState(c)}">${visitText(c)}</dd></div>
       <div class="kv"><dt>พิกัด</dt><dd class="num coord">${hasPin(c) ? (+c.lat).toFixed(4) + ", " + (+c.lng).toFixed(4) : "ยังไม่ได้ปักหมุด"}</dd></div>
     </dl>
+    ${photoIds(c).length ? `<div class="shots">${photoIds(c).map(f => imgTag(f, 240)).join("")}</div>` : ""}
     ${hasPin(c) ? `<a class="nav" href="${url}" target="_blank" rel="noopener">นำทางด้วย Google Maps</a>` : ""}
     <div class="card-acts">
       <button class="btn" id="c-visit">บันทึกว่าเข้าพบวันนี้</button>
@@ -2111,6 +2149,7 @@ function select(id) {
   $("c-edit").disabled = ro; $("c-del").disabled = ro;
   $("c-visit").disabled = ro || c.visit === todayISO();
   if (c.visit === todayISO()) $("c-visit").textContent = "เข้าพบแล้ววันนี้ ✓";
+  $("c-body").querySelectorAll(".shots img").forEach(im => im.onclick = () => lightbox(im.dataset.fid));
   $("c-edit").onclick = () => openForm(id);
   $("c-del").onclick = () => remove(id);
   $("c-visit").onclick = () => markVisit(id);
@@ -2551,6 +2590,154 @@ async function fillAddrFrom(lat, lng) {
 
 /* ---------------- ฟอร์ม ---------------- */
 let editId = null;
+/* ---------------- รูปภาพ ---------------- */
+const PHOTO_MAX = 8;
+let keepPhotos = [];   // รหัสไฟล์เดิมที่ยังเก็บไว้
+let pendPhotos = [];   // รูปใหม่ที่รออัปโหลด
+let delPhotos  = [];   // รหัสไฟล์เดิมที่สั่งลบ
+
+const photoIds = c => String((c && c.photos) || "").split(",").map(x => x.trim()).filter(Boolean);
+const photoURL = (fid, w) => "https://lh3.googleusercontent.com/d/" + fid + "=w" + (w || 1200);
+const photoAlt = (fid, w) => "https://drive.google.com/thumbnail?id=" + fid + "&sz=w" + (w || 1200);
+// ลิงก์รูปของ Google มีสองแบบ ถ้าแบบแรกไม่ขึ้นให้สลับไปอีกแบบอัตโนมัติ
+function imgTag(fid, w) {
+  return `<img loading="lazy" data-fid="${fid}" alt="รูปลูกค้า" src="${photoURL(fid, w)}"
+    onerror="if(!this.dataset.alt){this.dataset.alt=1;this.src='${photoAlt(fid, w)}';}">`;
+}
+
+/** ย่อรูปก่อนส่ง — รูปจากมือถือใหญ่หลายเมกะไบต์ ส่งตรง ๆ จะช้าและเปลืองที่ */
+function shrink(file) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onerror = () => rej(new Error("อ่านไฟล์รูปไม่ได้"));
+    fr.onload = () => {
+      const im = new Image();
+      im.onerror = () => rej(new Error("ไฟล์นี้เปิดเป็นรูปไม่ได้"));
+      im.onload = () => {
+        const MAX = 1280;
+        const k = Math.min(1, MAX / Math.max(im.naturalWidth, im.naturalHeight, 1));
+        const w = Math.max(1, Math.round(im.naturalWidth * k));
+        const h = Math.max(1, Math.round(im.naturalHeight * k));
+        const cv = document.createElement("canvas");
+        cv.width = w; cv.height = h;
+        cv.getContext("2d").drawImage(im, 0, 0, w, h);
+        try { res(cv.toDataURL("image/jpeg", 0.72)); }
+        catch (e) { rej(new Error("ย่อรูปไม่สำเร็จ")); }
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+function drawPhotoGrid() {
+  const g = $("i-pgrid");
+  if (!g) return;
+  g.innerHTML =
+    keepPhotos.map(fid =>
+      `<div class="pcell">${imgTag(fid, 240)}<button type="button" class="rm" data-fid="${fid}" aria-label="ลบรูปนี้">✕</button></div>`
+    ).concat(pendPhotos.map((ph, i) =>
+      `<div class="pcell wait"><img src="${ph.data}" alt=""><span class="tag">รอบันทึก</span>` +
+      `<button type="button" class="rm" data-i="${i}" aria-label="เอารูปนี้ออก">✕</button></div>`
+    )).join("");
+  g.querySelectorAll(".rm").forEach(b => b.onclick = () => {
+    if (b.dataset.fid) { keepPhotos = keepPhotos.filter(x => x !== b.dataset.fid); delPhotos.push(b.dataset.fid); }
+    else pendPhotos.splice(+b.dataset.i, 1);
+    drawPhotoGrid();
+  });
+  const n = keepPhotos.length + pendPhotos.length;
+  $("i-padd").disabled = n >= PHOTO_MAX;
+  $("i-ptip").textContent = n
+    ? `มี ${n} รูป (สูงสุด ${PHOTO_MAX})` + (pendPhotos.length || delPhotos.length ? " · กดบันทึกเพื่อยืนยัน" : "")
+    : `แนบได้สูงสุด ${PHOTO_MAX} รูปต่อลูกค้า 1 ราย · ระบบจะย่อรูปให้อัตโนมัติ`;
+}
+
+function resetPhotos(c) {
+  keepPhotos = c ? photoIds(c) : [];
+  pendPhotos = []; delPhotos = [];
+  drawPhotoGrid();
+}
+
+$("i-padd").onclick = () => $("i-photo").click();
+$("i-photo").onchange = async e => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  $("i-padd").disabled = true;
+  for (const f of files) {
+    if (keepPhotos.length + pendPhotos.length >= PHOTO_MAX) { toast(`แนบได้สูงสุด ${PHOTO_MAX} รูป`, "bad"); break; }
+    if (f.type && !/^image\//.test(f.type)) { toast("ไม่ใช่ไฟล์รูป: " + f.name, "bad"); continue; }
+    try {
+      pendPhotos.push({ data: await shrink(f), name: (f.name || "photo").replace(/\.[^.]+$/, "").slice(0, 40) || "photo" });
+    } catch (err) { toast(err.message || "เพิ่มรูปไม่สำเร็จ", "bad"); }
+  }
+  drawPhotoGrid();
+};
+
+/* ดูรูปเต็มจอ */
+function lightbox(fid) {
+  const im = $("lb-img");
+  delete im.dataset.alt;
+  im.onerror = () => { if (im.dataset.alt) return; im.dataset.alt = 1; im.src = photoAlt(fid, 1600); };
+  im.src = photoURL(fid, 1600);
+  $("lb").classList.add("on");
+}
+function lbClose() { $("lb").classList.remove("on"); $("lb-img").removeAttribute("src"); }
+$("lb-x").onclick = lbClose;
+$("lb").onclick = e => { if (e.target === $("lb")) lbClose(); };
+addEventListener("keydown", e => { if (e.key === "Escape" && $("lb").classList.contains("on")) lbClose(); });
+
+/**
+ * ส่งรูปขึ้นเซิร์ฟเวอร์
+ * รูปยาวเกินกว่าจะใส่ใน URL ได้ จึงยิงเป็นฟอร์ม POST เข้าเฟรมซ่อน
+ * (อ่านคำตอบกลับข้ามโดเมนไม่ได้ จึงยืนยันผลด้วยการโหลดข้อมูลใหม่อีกที)
+ */
+function postForm(action, params) {
+  return new Promise(resolve => {
+    const base = (typeof apiBase === "function") ? apiBase() : "";
+    if (!base) return resolve(false);
+    const nm = "__sscF" + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+    const fr = document.createElement("iframe");
+    fr.name = nm; fr.setAttribute("aria-hidden", "true"); fr.style.display = "none";
+    document.body.appendChild(fr);
+    const f = document.createElement("form");
+    f.method = "POST"; f.action = base; f.target = nm; f.acceptCharset = "utf-8"; f.style.display = "none";
+    Object.keys(params).forEach(k => {
+      const t = document.createElement("textarea");
+      t.name = k; t.value = params[k]; f.appendChild(t);
+    });
+    const a = document.createElement("input");
+    a.name = "action"; a.value = action; f.appendChild(a);
+    document.body.appendChild(f);
+    let done = false;
+    const fin = v => {
+      if (done) return; done = true;
+      clearTimeout(tm);
+      setTimeout(() => { try { f.remove(); fr.remove(); } catch (e) {} }, 300);
+      resolve(v);
+    };
+    const tm = setTimeout(() => fin(false), 60000);
+    fr.onload = () => fin(true);
+    fr.onerror = () => fin(false);
+    try { f.submit(); } catch (e) { fin(false); }
+  });
+}
+
+/** บันทึกรูปทั้งหมดของลูกค้ารายนี้ คืนจำนวนรูปที่ควรมีหลังเสร็จ */
+async function savePhotos(id) {
+  const want = keepPhotos.length + pendPhotos.length;
+  if (!id || (!pendPhotos.length && !delPhotos.length)) return want;
+  const dels = delPhotos.slice(), adds = pendPhotos.slice();
+  delPhotos = []; pendPhotos = [];
+  for (const fid of dels) await postForm("photoDel", { id: id, fid: fid });
+  let i = 0;
+  for (const ph of adds) {
+    i++;
+    toast(`กำลังอัปโหลดรูป ${i}/${adds.length}…`);
+    await postForm("photoAdd", { id: id, data: ph.data, name: ph.name });
+  }
+  return want;
+}
+
 function openForm(id) {
   editId = id || null;
   const c = id ? find(id) : null;
@@ -2583,6 +2770,7 @@ function openForm(id) {
   }
   else { p.classList.remove("set"); p.textContent = "หรือคลิกปักหมุดบนแผนที่เอง"; setTip("กด GPS เพื่อปักตรงที่คุณอยู่ · หรือคลิกบนแผนที่ · หรือพิมพ์พิกัดเอง"); }
   $("i-del").hidden = !c;
+  resetPhotos(c);
   $("veil").classList.add("on");
   setTimeout(() => $("i-name").focus({ preventScroll: true }), 40);
 }
@@ -2643,10 +2831,19 @@ $("i-save").onclick = async () => {
       : await api("update", { id: editId, rec: JSON.stringify(rec) });
     DATA = res.all;
     const savedId = res.id || editId;
+    const busyPhotos = pendPhotos.length || delPhotos.length;
     closeForm(); render(); select(savedId);
     toast(noPin
       ? (isNew ? `เพิ่ม "${name}" แล้ว · ยังไม่ได้ปักหมุด` : "บันทึกแล้ว · ยังไม่ได้ปักหมุด")
       : (isNew ? `เพิ่ม "${name}" แล้ว · ทีมเห็นแล้ว` : "บันทึกการแก้ไขแล้ว · ทีมเห็นแล้ว"), noPin ? "" : "ok");
+    if (busyPhotos) {
+      const want = await savePhotos(savedId);
+      await reload(true);
+      const got = photoIds(find(savedId)).length;
+      select(savedId);
+      if (got === want) toast(want ? `บันทึกรูปแล้ว ${want} รูป` : "ลบรูปแล้ว", "ok");
+      else toast(`อัปโหลดรูปได้ ${got} จาก ${want} รูป — ลองแก้ไขแล้วแนบใหม่อีกครั้ง`, "bad");
+    }
   } catch (e) {
     toast("บันทึกไม่สำเร็จ: " + (e.message || "ลองใหม่อีกครั้ง"), "bad");
   } finally { btn.disabled = false; btn.textContent = "บันทึก"; }

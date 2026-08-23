@@ -1169,7 +1169,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v27</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v28</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1835,7 +1835,10 @@ function showMe(lat, lng, acc) {
 }
 function showGhost(lat, lng) {
   if (ghost) map.removeLayer(ghost);
-  ghost = L.marker([lat, lng], { icon: pinIcon(formRec(), true), zIndexOffset: 500 }).addTo(map);
+  ghost = null;
+  const a = parseFloat(lat), b = parseFloat(lng);
+  if (!isFinite(a) || !isFinite(b)) return;   // ยังไม่มีพิกัด ก็แค่ไม่ต้องวาดหมุดตัวอย่าง
+  ghost = L.marker([a, b], { icon: pinIcon(formRec(), true), zIndexOffset: 500 }).addTo(map);
 }
 function clearGhost() { if (ghost) { map.removeLayer(ghost); ghost = null; } }
 
@@ -2566,13 +2569,17 @@ function openForm(id) {
   $("i-ssc").value = c ? c.ssc || SSC_LIST[0] : SSC_LIST[0];
   $("i-prov").value = c ? c.province || "" : "";
   $("i-zone").value = c ? c.zone || ZONES[0] : ZONES[0];
-  $("i-lat").value = c ? c.lat : "";
-  $("i-lng").value = c ? c.lng : "";
+  $("i-lat").value = c && hasPin(c) ? c.lat : "";
+  $("i-lng").value = c && hasPin(c) ? c.lng : "";
   $("w-name").classList.remove("bad"); $("m-name").classList.remove("on");
   $("i-gps").disabled = false; $("i-gps").textContent = "ใช้ตำแหน่งปัจจุบันของฉัน (GPS)";
   clearGhost();
   const p = $("i-pick");
-  if (c) { markPicked(); showGhost(c.lat, c.lng); setTip("เปลี่ยนตำแหน่งได้ด้วย GPS, คลิกบนแผนที่ หรือพิมพ์พิกัด"); }
+  if (c && hasPin(c)) { markPicked(); showGhost(c.lat, c.lng); setTip("เปลี่ยนตำแหน่งได้ด้วย GPS, คลิกบนแผนที่ หรือพิมพ์พิกัด"); }
+  else if (c) {
+    p.classList.remove("set"); p.textContent = "หรือคลิกปักหมุดบนแผนที่เอง";
+    setTip("รายนี้ยังไม่ได้ปักหมุด — แก้ข้อมูลอื่นแล้วกดบันทึกได้เลย ค่อยกลับมาปักทีหลังก็ได้");
+  }
   else { p.classList.remove("set"); p.textContent = "หรือคลิกปักหมุดบนแผนที่เอง"; setTip("กด GPS เพื่อปักตรงที่คุณอยู่ · หรือคลิกบนแผนที่ · หรือพิมพ์พิกัดเอง"); }
   $("i-del").hidden = !c;
   $("veil").classList.add("on");

@@ -993,6 +993,8 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
   width: 76px; height: 76px; flex: none; object-fit: cover; cursor: zoom-in;
   border-radius: 9px; background: var(--line); border: 1px solid var(--line);
 }
+.pbtns { display: flex; gap: 7px; }
+.pbtns .btn { flex: 1; min-height: 44px; }   /* ใหญ่พอให้นิ้วกดติดบนมือถือ */
 .pgrid { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 7px; }
 .pcell { position: relative; width: 74px; height: 74px; }
 .pcell img { width: 100%; height: 100%; object-fit: cover; border-radius: 9px; border: 1px solid var(--line); background: var(--line); }
@@ -1202,7 +1204,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v34</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v35</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1336,8 +1338,13 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
       <datalist id="prov-list"></datalist>
       <div class="ff">
         <label>รูปภาพ</label>
-        <button type="button" class="btn" id="i-padd">เพิ่มรูป (ถ่าย / เลือกจากเครื่อง)</button>
+        <div class="pbtns">
+          <button type="button" class="btn" id="i-pcam" hidden>📷 ถ่ายรูป</button>
+          <button type="button" class="btn" id="i-padd">🖼️ เลือกรูปจากเครื่อง</button>
+        </div>
+        <!-- แยกสองช่อง: Android จะไม่เปิดกล้องให้ถ้าช่องนั้นตั้งเป็นเลือกได้หลายรูป -->
         <input id="i-photo" type="file" accept="image/*" multiple hidden>
+        <input id="i-pcamin" type="file" accept="image/*" capture="environment" hidden>
         <div class="pgrid" id="i-pgrid"></div>
         <div class="tip" id="i-ptip">แนบได้สูงสุด 8 รูปต่อลูกค้า 1 ราย · ระบบจะย่อรูปให้อัตโนมัติ</div>
       </div>
@@ -2681,9 +2688,11 @@ function drawPhotoGrid() {
   });
   const n = keepPhotos.length + pendPhotos.length;
   $("i-padd").disabled = n >= PHOTO_MAX;
+  $("i-pcam").disabled = n >= PHOTO_MAX;
   $("i-ptip").textContent = n
     ? `มี ${n} รูป (สูงสุด ${PHOTO_MAX})` + (pendPhotos.length || delPhotos.length ? " · กดบันทึกเพื่อยืนยัน" : "")
-    : `แนบได้สูงสุด ${PHOTO_MAX} รูปต่อลูกค้า 1 ราย · ระบบจะย่อรูปให้อัตโนมัติ`;
+    : (hasCam ? `กดถ่ายรูปหน้างานได้เลย หรือเลือกจากคลังภาพ · สูงสุด ${PHOTO_MAX} รูป`
+              : `แนบได้สูงสุด ${PHOTO_MAX} รูปต่อลูกค้า 1 ราย · ระบบจะย่อรูปให้อัตโนมัติ`);
 }
 
 function resetPhotos(c) {
@@ -2692,11 +2701,18 @@ function resetPhotos(c) {
   drawPhotoGrid();
 }
 
+// เครื่องที่ใช้นิ้วจิ้ม (มือถือ/แท็บเล็ต) ถึงจะมีกล้องให้ใช้จริง
+const hasCam = (() => { try { return matchMedia("(pointer: coarse)").matches; } catch (e) { return false; } })();
+if (hasCam) $("i-pcam").hidden = false;
+
 $("i-padd").onclick = () => $("i-photo").click();
-$("i-photo").onchange = async e => {
+$("i-pcam").onclick = () => $("i-pcamin").click();
+
+async function takePhotos(e) {
   const files = [...e.target.files];
   e.target.value = "";
   $("i-padd").disabled = true;
+  $("i-pcam").disabled = true;
   for (const f of files) {
     if (keepPhotos.length + pendPhotos.length >= PHOTO_MAX) { toast(`แนบได้สูงสุด ${PHOTO_MAX} รูป`, "bad"); break; }
     if (f.type && !/^image\//.test(f.type)) { toast("ไม่ใช่ไฟล์รูป: " + f.name, "bad"); continue; }
@@ -2705,7 +2721,9 @@ $("i-photo").onchange = async e => {
     } catch (err) { toast(err.message || "เพิ่มรูปไม่สำเร็จ", "bad"); }
   }
   drawPhotoGrid();
-};
+}
+$("i-photo").onchange = takePhotos;
+$("i-pcamin").onchange = takePhotos;
 
 /* ดูรูปเต็มจอ */
 function lightbox(fid) {

@@ -1204,7 +1204,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v35</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v36</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1248,6 +1248,9 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
           <div class="btn-row">
             <button class="btn" id="srvurl" title="ดู / คัดลอก / แก้ลิงก์เซิร์ฟเวอร์ที่เครื่องนี้ใช้อยู่">ลิงก์เซิร์ฟเวอร์</button>
             <button class="btn" id="pdiag" title="ตรวจว่าระบบรูปภาพพร้อมใช้หรือยัง">ตรวจระบบรูป</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn danger" id="delnopin" title="ลบลูกค้าที่ยังไม่มีพิกัดออกทั้งหมด">ลบรายที่รอปักหมุด</button>
           </div>
           <input id="file" type="file" accept="application/json,.json" hidden>
         </div>
@@ -1584,7 +1587,7 @@ function paintMode(txt, cls) {
 }
 function setBusy(on) {
   busy = on;
-  ["add", "imp", "refresh"].forEach(id => { const e = $(id); if (e) e.disabled = on; });
+  ["add", "imp", "refresh", "delnopin"].forEach(id => { const e = $(id); if (e) e.disabled = on; });
 }
 /* เก็บข้อมูลล่าสุดไว้ในเครื่อง เผื่อเข้าไร่แล้วเน็ตหลุด */
 const CACHE_KEY = "sscDataCache";
@@ -1699,6 +1702,45 @@ if (srvBtn) srvBtn.onclick = () => showSetup("edit");
 const pdBtn = document.getElementById("pdiag");
 if (pdBtn) pdBtn.onclick = () => photoDiag();
 
+/* ลบรายที่ยังไม่ได้ปักหมุดทั้งหมด — ถามยืนยันก่อนเสมอ เพราะกู้คืนไม่ได้ */
+async function delNoPinAll() {
+  const list = DATA.filter(c => !hasPin(c));
+  if (!list.length) { toast("ไม่มีรายที่รอปักหมุดแล้ว", "ok"); return; }
+  const peek = list.slice(0, 8).map(c => "· " + esc(c.name)).join("<br>");
+  const more = list.length > 8 ? "<br>· และอีก " + (list.length - 8) + " ราย" : "";
+  ask("ลบลูกค้าที่ยังไม่ได้ปักหมุด <b>" + list.length + " ราย</b> ทิ้งถาวรใช่หรือไม่?<br>" +
+      '<span style="display:inline-block;margin-top:8px;font-size:12.5px;color:var(--ink-2);line-height:1.7">' +
+      peek + more + "</span><br>" +
+      '<span style="color:#d93f3f;font-size:12.5px">ลบแล้วเอาคืนไม่ได้</span>', async () => {
+    setBusy(true);
+    try {
+      let removed = 0;
+      try {
+        const res = await api("delNoPin");        // เซิร์ฟเวอร์รุ่นใหม่ ลบรวดเดียว
+        removed = res.removed; DATA = res.all;
+      } catch (e) {
+        if (!/ไม่รู้จักคำสั่ง/.test(e.message || "")) throw e;
+        // เซิร์ฟเวอร์รุ่นเก่ายังไม่มีคำสั่งนี้ ลบทีละรายแทน
+        for (const c of list) {
+          removed++;
+          toast("กำลังลบ " + removed + "/" + list.length + "…");
+          const r = await api("delete", { id: c.id });
+          DATA = r.all;
+        }
+      }
+      keepCache(); curId = null;
+      $("card").classList.remove("on");
+      render(); frame();
+      toast("ลบแล้ว " + removed + " ราย", "ok");
+    } catch (e) {
+      toast("ลบไม่สำเร็จ: " + (e.message || ""), "bad");
+      await reload(true);
+    } finally { setBusy(false); }
+  });
+}
+const dnBtn = document.getElementById("delnopin");
+if (dnBtn) dnBtn.onclick = delNoPinAll;
+
 /* ---------------- แจ้งเตือน ---------------- */
 let tTimer;
 function toast(msg, kind) {
@@ -1707,7 +1749,8 @@ function toast(msg, kind) {
   clearTimeout(tTimer); tTimer = setTimeout(() => { t.className = "toast"; }, 3600);
 }
 let askFn = null;
-function ask(msg, fn) { $("ask-msg").textContent = msg; askFn = fn; $("ask").classList.add("on"); }
+// รับ HTML ได้ (ใช้ตัวหนา/ขึ้นบรรทัดในคำถาม) — ข้อความจากผู้ใช้ต้องผ่าน esc() มาก่อนเสมอ
+function ask(msg, fn) { $("ask-msg").innerHTML = msg; askFn = fn; $("ask").classList.add("on"); }
 function askClose() { $("ask").classList.remove("on"); askFn = null; }
 $("ask-no").onclick = askClose;
 $("ask-yes").onclick = () => { const f = askFn; askClose(); if (f) f(); };
@@ -2873,7 +2916,7 @@ async function photoDiag() {
   try {
     const pong = await api("ping");
     add(true, "ต่อเซิร์ฟเวอร์ได้ · ชีต: " + (pong.sheet || "-"));
-    if (pong.ver === "photo-1") {
+    if (/^photo-/.test(pong.ver || "")) {
       add(true, "Code.gs เป็นรุ่นที่รองรับรูปแล้ว");
     } else {
       add(false, "<b>Code.gs ยังเป็นรุ่นเก่า</b><br>วางโค้ดใหม่ → Ctrl+S → Deploy → Manage deployments → กดดินสอ → Version: <b>New version</b> → Deploy");
@@ -3026,7 +3069,7 @@ $("i-save").onclick = async () => {
 
 function remove(id) {
   const c = find(id); if (!c) return;
-  ask(`ต้องการลบลูกค้า "${c.name}" ใช่หรือไม่?`, async () => {
+  ask(`ต้องการลบลูกค้า "${esc(c.name)}" ใช่หรือไม่?`, async () => {
     setBusy(true);
     try {
       const res = await api("delete", { id });

@@ -987,6 +987,19 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
 }
 .leaflet-container .leaflet-control-attribution a { color: var(--muted); }
 
+/* ---------- แผนที่ความหนาแน่น ---------- */
+.heatbox { padding: 10px 12px 12px; border-bottom: 1px solid var(--line); }
+.heatrow { display: flex; flex-wrap: wrap; gap: 6px; }
+.heatkey { margin-top: 9px; font-size: 11.5px; color: var(--ink-2); line-height: 1.65; }
+.heatbar { display: flex; height: 9px; border-radius: 5px; overflow: hidden; margin: 5px 0 4px; }
+.heatbar i { flex: 1; }
+.heatbar i.hatch {
+  background-image: repeating-linear-gradient(45deg,
+    rgba(255,255,255,.55) 0 2px, transparent 2px 5px);
+}
+.heatends { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); }
+.heatnote { margin-top: 6px; }
+
 /* ---------- รูปภาพ ---------- */
 .shots { display: flex; gap: 6px; overflow-x: auto; padding: 9px 0 2px; -webkit-overflow-scrolling: touch; }
 .shots img {
@@ -1204,7 +1217,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v36</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v40</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1265,6 +1278,11 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
         <div class="filters">
           <label class="fl"><span>เขต</span><select id="f-zone"><option value="">ทุกเขต</option></select></label>
           <label class="fl"><span>SSC</span><select id="f-ssc"><option value="">ทุก SSC</option></select></label>
+        </div>
+        <div class="heatbox" id="heatbox">
+          <div class="lg-head"><span class="ttl">แผนที่ความหนาแน่น</span></div>
+          <div class="heatrow" id="heatrow"></div>
+          <div class="heatkey" id="heatkey" hidden></div>
         </div>
         <div class="legend" id="legend"></div>
       </div>
@@ -1332,7 +1350,12 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
         </div>
       </div>
       <div class="ff" id="w-machine" hidden><label for="i-machine">ผลิตภัณฑ์</label><select id="i-machine"></select></div>
-      <div class="ff" id="w-brand" hidden><label for="i-brand">ยี่ห้อ (รถแทรกเตอร์คู่แข่ง)</label><select id="i-brand"></select></div>
+      <div class="ff" id="w-brand" hidden><label for="i-brand">ยี่ห้อคู่แข่ง</label><select id="i-brand"></select></div>
+      <div class="ff" id="w-brand2" hidden>
+        <label for="i-brand2">ระบุยี่ห้อ</label>
+        <input id="i-brand2" type="text" placeholder="พิมพ์ชื่อยี่ห้อ เช่น ฟอร์ด" list="brand-list" maxlength="40">
+        <datalist id="brand-list"></datalist>
+      </div>
       <div class="ff"><label for="i-ssc">SSC</label><select id="i-ssc"></select></div>
       <div class="pair">
         <div class="ff"><label for="i-prov">จังหวัด</label><input id="i-prov" type="text" placeholder="เช่น พิษณุโลก" list="prov-list"></div>
@@ -1472,7 +1495,10 @@ const PRODUCTS = {
   "K-water":      { glyph: "solar",   color: "--p1" },
   "ลูกค้า":       { glyph: "tractor", color: "--p2", byMachine: true },
   "สินค้าคู่แข่ง":  { glyph: "tractor", color: "--p3", byBrand: true, byMachine: true },
-  "KFC":          { glyph: "person",  color: "--p4", byMachine: true }
+  "KFC":          { glyph: "person",  color: "--p4", byMachine: true },
+  // ตัวแทนจำหน่าย — ใช้ไอคอนบ้าน ฝั่งคู่แข่งแบ่งสีตามยี่ห้อเหมือนสินค้าคู่แข่ง
+  "AD คูโบต้า":    { glyph: "house",   color: "--p2" },
+  "AD คู่แข่ง":     { glyph: "house",   color: "--p3", byBrand: true }
 };
 // ผลิตภัณฑ์ของกลุ่ม "ลูกค้า" — สีส้มเหมือนกันหมด ต่างกันที่รูปสัญลักษณ์
 const MACHINES = {
@@ -1502,7 +1528,8 @@ const GLYPH = {
   transplanter: '<path d="M11.4 12.8 L19.2 7.2 L21.8 10.8 L14 16.4 Z"/><path d="M14 10.6 L16.6 14.2"/><path d="M16.6 8.8 L19.2 12.4"/><path d="M2.6 16.6 H12.6"/><path d="M6 16.6 V12.4 H10.2"/><circle cx="5.2" cy="19.2" r="2.4"/><circle cx="12.8" cy="19.2" r="2.4"/>',
   sugarcane:    '<rect x="9.4" y="17.8" width="11.8" height="3.8" rx="1.9"/><path d="M12.2 17.8 V10.6 H19 V17.8"/><path d="M19 12.6 L22 10.2"/><path d="M3.6 19 V5.2"/><path d="M7.2 19 V8.6"/><path d="M3.6 9.2 L1.2 7"/><path d="M7.2 12.4 L4.8 10.2"/>',
   drone:        '<rect x="8.6" y="8.6" width="6.8" height="6.8" rx="1.8"/><path d="M9.2 9.2 L6.9 6.9"/><path d="M14.8 9.2 L17.1 6.9"/><path d="M9.2 14.8 L6.9 17.1"/><path d="M14.8 14.8 L17.1 17.1"/><circle cx="5" cy="5" r="2.6"/><circle cx="19" cy="5" r="2.6"/><circle cx="5" cy="19" r="2.6"/><circle cx="19" cy="19" r="2.6"/>',
-  person:       '<circle cx="12" cy="7.4" r="3.7"/><path d="M5.4 20.6 c0-3.9 2.9-6.7 6.6-6.7 s6.6 2.8 6.6 6.7"/>'
+  person:       '<circle cx="12" cy="7.4" r="3.7"/><path d="M5.4 20.6 c0-3.9 2.9-6.7 6.6-6.7 s6.6 2.8 6.6 6.7"/>',
+  house:        '<path d="M2.8 11 L12 3.4 L21.2 11"/><path d="M5.2 12.6 V20.6 H18.8 V12.6"/><path d="M9.8 20.6 V15 H14.2 V20.6"/>'
 };
 
 const SSC_LIST = ["SSC-พิษณุโลก","SSC-กำแพงเพชร","SSC-อุตรดิตถ์","SSC-นครสวรรค์","SSC-เพชรบูรณ์","SSC-เชียงใหม่","SSC-เชียงราย","SSC-ลำปาง","SSC-ตาก","SSC-แพร่"];
@@ -1511,7 +1538,7 @@ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).
 function colorOf(c) {
   const spec = PRODUCTS[c && c.product];
   if (!spec) return css("--muted");
-  if (spec.byBrand) return css(BRANDS[c.brand] || BRANDS["อื่นๆ"]);
+  if (spec.byBrand) return css(BRANDS[brandKey(c)]);
   return css(spec.color);
 }
 function glyphOf(c) {
@@ -1961,6 +1988,8 @@ function clearGhost() { if (ghost) { map.removeLayer(ghost); ghost = null; } }
 const selProd = new Set(), selMach = new Set(), selBrand = new Set(), selVisit = new Set();
 const anyFilter = () => selProd.size || selMach.size || selBrand.size || selVisit.size;
 const isRival = c => !!(PRODUCTS[c && c.product] || {}).byBrand;
+// ยี่ห้อที่พิมพ์เองจะไม่อยู่ในรายการหลัก ให้จัดเข้ากลุ่ม "อื่นๆ" ทั้งสีและตัวกรอง
+const brandKey = c => (c && BRANDS[c.brand]) ? c.brand : "อื่นๆ";
 const hasPin  = c => c && c.lat !== null && c.lat !== undefined && c.lat !== "" && isFinite(+c.lat);
 
 /* ---------------- การเข้าพบ ---------------- */
@@ -2042,8 +2071,8 @@ function drawLegend() {
          chipHTML(css("--p2"), MACHINES[m]), "mini")
   ).join("");
 
-  const brands = Object.keys(BRANDS).filter(b => b !== "อื่นๆ").map(b =>
-    chip(selBrand, { g: "b", v: b, fn: c => isRival(c) && c.brand === b }, b,
+  const brands = Object.keys(BRANDS).map(b =>
+    chip(selBrand, { g: "b", v: b, fn: c => isRival(c) && brandKey(c) === b }, b,
          `<span class="dot" data-c="${b}"></span>`, "mini")
   ).join("");
 
@@ -2097,7 +2126,7 @@ function visible() {
   let out = baseSet().filter(c => {
     if (selProd.size && !selProd.has(c.product)) return false;
     if (selMach.size && !selMach.has(c.machine)) return false;
-    if (selBrand.size && !(isRival(c) && selBrand.has(c.brand))) return false;
+    if (selBrand.size && !(isRival(c) && selBrand.has(brandKey(c)))) return false;
     if (selVisit.size && !selVisit.has(visitState(c))) return false;
     if (nearAt) {
       if (!hasPin(c)) return false;
@@ -2155,6 +2184,7 @@ function render() {
   drawLegend();                       // จำนวนบนตัวกรองต้องตรงกับข้อมูลล่าสุดเสมอ
   const vis = visible();
   drawPins(vis);
+  if (typeof heatLayer !== "undefined" && heatMode !== "off") heatLayer.redraw();
   const list = $("list");
   if (!vis.length) {
     list.innerHTML = DATA.length
@@ -2674,6 +2704,170 @@ function fixPhone(v) {
   return /^[1-9][0-9]{7,8}$/.test(s) ? "0" + s : s;
 }
 
+/* ---------------- แผนที่ความหนาแน่น + ช่องว่างตลาด ---------------- */
+/*
+ * วาดเองบน canvas ไม่พึ่งไลบรารีเสริม
+ * โทนสีมาจากชุดสีมาตรฐาน: น้ำเงินไล่เข้ม = ปริมาณ, น้ำเงิน↔แดง = สองขั้ว (กลางเป็นเทา)
+ */
+const HEAT_KM = 8;                 // รัศมีอิทธิพลของลูกค้า 1 ราย (กิโลเมตร)
+const HEAT_MODES = ["off", "ours", "rivals", "gap"];
+const HEAT_LABEL = { off: "ปิด", ours: "ลูกค้าเรา", rivals: "คู่แข่ง", gap: "ช่องว่างตลาด" };
+
+// เขียว = ฝั่งเรา · แดง = ฝั่งคู่แข่ง  (อ่อน→เข้ม)
+const RAMP_GREEN = ["#d7f0dd","#bde5c8","#a1d9b1","#84cd9a","#66c184","#43b56f","#1baf7a","#12965f","#0e7f4d","#0b6b2f","#095b28","#074b21","#053c1a"];
+const RAMP_RED   = ["#fbd7d6","#f8c2c1","#f4a9a8","#ef908f","#e97877","#e66767","#e34948","#d43a39","#bd3231","#a32b2a","#8a2423","#711d1c","#5c1817"];
+
+let heatMode = "off";
+try { heatMode = localStorage.getItem("sscHeat") || "off"; } catch (e) {}
+if (HEAT_MODES.indexOf(heatMode) < 0) heatMode = "off";
+
+function hex2rgb(h) {
+  return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+}
+/** ตารางสี 256 ช่อง จากรายการสีที่ให้มา */
+function makeLUT(ramp) {
+  const rgb = ramp.map(hex2rgb), out = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255 * (rgb.length - 1), a = Math.floor(t), b = Math.min(a + 1, rgb.length - 1), f = t - a;
+    for (let k = 0; k < 3; k++) out[i * 3 + k] = rgb[a][k] + (rgb[b][k] - rgb[a][k]) * f;
+  }
+  return out;
+}
+const LUT_GREEN = makeLUT(RAMP_GREEN), LUT_RED = makeLUT(RAMP_RED);
+
+/** แปะรอยจาง ๆ ทีละจุดลงบัฟเฟอร์ แล้วค่อยอ่านความเข้มรวมทีหลัง */
+function stamp(size) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size * 2;
+  const x = c.getContext("2d");
+  const g = x.createRadialGradient(size, size, 0, size, size, size);
+  g.addColorStop(0, "rgba(0,0,0,1)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = g; x.fillRect(0, 0, size * 2, size * 2);
+  return c;
+}
+
+const HeatLayer = L.Layer.extend({
+  onAdd(map) {
+    this._map = map;
+    this._cv = L.DomUtil.create("canvas", "leaflet-zoom-hide");
+    this._cv.style.pointerEvents = "none";
+    map.getPanes().overlayPane.appendChild(this._cv);
+    map.on("moveend zoomend resize", this._draw, this);
+    this._draw();
+  },
+  onRemove(map) {
+    map.off("moveend zoomend resize", this._draw, this);
+    if (this._cv && this._cv.parentNode) this._cv.parentNode.removeChild(this._cv);
+    this._cv = null;
+  },
+  _draw() {
+    const map = this._map, cv = this._cv;
+    if (!map || !cv || heatMode === "off") return;
+    const size = map.getSize();
+    const tl = map.containerPointToLayerPoint([0, 0]);
+    L.DomUtil.setPosition(cv, tl);
+    cv.width = size.x; cv.height = size.y;
+    cv.style.width = size.x + "px"; cv.style.height = size.y + "px";
+
+    // รัศมีเป็นพิกเซล คิดจากระยะจริงบนพื้นโลก จะได้หมายถึง "รอบ ๆ 8 กม." เสมอ
+    const lat = map.getCenter().lat;
+    const mpp = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, map.getZoom());
+    // ตอนซูมออกดูทั้งประเทศ 8 กม. เล็กจนมองไม่เห็น จึงตั้งพื้นให้กว้างพอที่จะอ่านเป็น "โซน" ได้
+    const r = Math.max(46, Math.min(150, Math.round(HEAT_KM * 1000 / mpp)));
+    const dot = stamp(r);
+
+    const layers = heatMode === "gap" ? ["ours", "rivals"] : [heatMode];
+    const bufs = layers.map(which => {
+      const b = document.createElement("canvas");
+      b.width = size.x; b.height = size.y;
+      const bx = b.getContext("2d");
+      bx.globalAlpha = 0.42;
+      const pts = visible().filter(c => hasPin(c) &&
+        (which === "rivals" ? isRival(c) : !isRival(c)));
+      for (const c of pts) {
+        const p = map.latLngToContainerPoint([+c.lat, +c.lng]);
+        if (p.x < -r || p.y < -r || p.x > size.x + r || p.y > size.y + r) continue;
+        bx.drawImage(dot, p.x - r, p.y - r);
+      }
+      return bx.getImageData(0, 0, size.x, size.y).data;
+    });
+
+    const ctx = cv.getContext("2d");
+    const img = ctx.createImageData(size.x, size.y);
+    const px = img.data;
+    if (heatMode === "gap") {
+      const A = bufs[0], B = bufs[1];                 // A = ของเรา, B = คู่แข่ง
+      const W = size.x;
+      for (let i = 0, j = 3; j < px.length; i += 4, j += 4) {
+        const d = B[j] - A[j];                        // บวก = คู่แข่งหนากว่า
+        const m = Math.abs(d);
+        if (m < 12) continue;                         // ต่างกันน้อย ปล่อยโปร่งใส (จุดกลางเป็นกลาง)
+        const red = d > 0;
+        const lut = red ? LUT_RED : LUT_GREEN;
+        const k = Math.min(255, m * 2) * 3 | 0;
+        px[i] = lut[k]; px[i + 1] = lut[k + 1]; px[i + 2] = lut[k + 2];
+        let a = Math.min(210, 60 + m);
+        // ลายทแยงบนฝั่งแดง — คนตาบอดสีแดง/เขียวแยกสองฝั่งด้วยสีอย่างเดียวไม่ได้
+        if (red) {
+          const q = i >> 2;
+          if (((q % W) + ((q / W) | 0)) % 10 < 4) a = a * 0.42 | 0;
+        }
+        px[j] = a;
+      }
+    } else {
+      const A = bufs[0], lut = heatMode === "rivals" ? LUT_RED : LUT_GREEN;
+      for (let i = 0, j = 3; j < px.length; i += 4, j += 4) {
+        const a = A[j];
+        if (a < 8) continue;
+        const k = a * 3 | 0;
+        px[i] = lut[k]; px[i + 1] = lut[k + 1]; px[i + 2] = lut[k + 2];
+        px[j] = Math.min(200, a);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  },
+  redraw() { this._draw(); }
+});
+const heatLayer = new HeatLayer();
+
+function bar(ramp) { return `<div class="heatbar">${ramp.map(c => `<i style="background:${c}"></i>`).join("")}</div>`; }
+
+function paintHeat() {
+  const row = $("heatrow");
+  row.innerHTML = HEAT_MODES.map(m =>
+    `<button type="button" class="chipbtn mini ${m === heatMode ? "on" : ""}" data-h="${m}"
+       aria-pressed="${m === heatMode}">${HEAT_LABEL[m]}</button>`).join("");
+  row.querySelectorAll("[data-h]").forEach(b => b.onclick = () => setHeat(b.dataset.h));
+
+  const key = $("heatkey");
+  if (heatMode === "off") { key.hidden = true; key.innerHTML = ""; return; }
+  key.hidden = false;
+  if (heatMode === "gap") {
+    key.innerHTML =
+      `<div class="heatbar">` +
+      [...RAMP_GREEN].reverse().map(c => `<i style="background:${c}"></i>`).join("") +
+      RAMP_RED.map(c => `<i class="hatch" style="background:${c}"></i>`).join("") +
+      `</div>` +
+      `<div class="heatends"><span>เราหนากว่า</span><span>พอ ๆ กัน</span><span>คู่แข่งหนากว่า</span></div>` +
+      `<div class="heatnote">โซน <b style="color:${RAMP_RED[8]}">แดงมีลายทแยง</b> คือคู่แข่งหนาแน่นกว่าเรา — จุดที่ควรลงไปบุก<br>` +
+      `โซน <b style="color:${RAMP_GREEN[9]}">เขียวเรียบ</b> คือเราแน่นกว่า · โซนโปร่งใสคือยังไม่มีใครเลย</div>`;
+  } else {
+    const ramp = heatMode === "rivals" ? RAMP_RED : RAMP_GREEN;
+    key.innerHTML = bar(ramp) +
+      `<div class="heatends"><span>เบาบาง</span><span>หนาแน่น</span></div>` +
+      `<div class="heatnote">นับ${heatMode === "rivals" ? "คู่แข่ง" : "ลูกค้าเรา"}ในรัศมี ${HEAT_KM} กม. รอบแต่ละจุด · เปลี่ยนตามตัวกรองที่เลือกไว้</div>`;
+  }
+}
+
+function setHeat(m) {
+  heatMode = HEAT_MODES.indexOf(m) < 0 ? "off" : m;
+  try { localStorage.setItem("sscHeat", heatMode); } catch (e) {}
+  if (heatMode === "off") { if (map.hasLayer(heatLayer)) map.removeLayer(heatLayer); }
+  else { if (!map.hasLayer(heatLayer)) heatLayer.addTo(map); heatLayer.redraw(); }
+  paintHeat();
+}
+
 /* ---------------- รูปภาพ ---------------- */
 const PHOTO_MAX = 8;
 let keepPhotos = [];   // รหัสไฟล์เดิมที่ยังเก็บไว้
@@ -2958,6 +3152,10 @@ function openForm(id) {
   $("i-prod").value = c ? c.product : Object.keys(PRODUCTS)[0];
   $("i-model").value = c ? c.model || "" : "";
   $("i-brand").value = c && c.brand && BRANDS[c.brand] ? c.brand : "อื่นๆ";
+  $("i-brand2").value = c && c.brand && !BRANDS[c.brand] ? c.brand : "";
+  // เติมยี่ห้อที่เคยพิมพ์ไว้เป็นตัวเลือกแนะนำ จะได้ไม่สะกดเพี้ยนกันคนละแบบ
+  $("brand-list").innerHTML = [...new Set(DATA.map(x => x.brand).filter(x => x && !BRANDS[x]))]
+    .sort().map(x => `<option value="${esc(x)}">`).join("");
   $("i-machine").value = c && c.machine && MACHINES[c.machine] ? c.machine : "";
   $("i-visit").value = c && c.visit ? c.visit : "";
   syncBrandField();
@@ -2994,12 +3192,25 @@ $("i-name").oninput = () => { $("w-name").classList.remove("bad"); $("m-name").c
   const a = parseFloat($("i-lat").value), b = parseFloat($("i-lng").value);
   if (!isNaN(a) && !isNaN(b)) { setTip("ใช้พิกัดที่พิมพ์เอง", "ok"); showGhost(a, b); }
 });
-function formRec() { return { product: $("i-prod").value, brand: $("i-brand").value, machine: $("i-machine").value }; }
+function formRec() { return { product: $("i-prod").value, brand: brandFromForm(), machine: $("i-machine").value }; }
+/** ยี่ห้อจากฟอร์ม — ถ้าเลือก "อื่นๆ" แล้วพิมพ์ชื่อไว้ ให้ใช้ชื่อที่พิมพ์ */
+function brandFromForm() {
+  if (!isRival({ product: $("i-prod").value })) return "";
+  const sel = $("i-brand").value;
+  if (sel !== "อื่นๆ") return sel;
+  const typed = $("i-brand2").value.trim();
+  return typed || "อื่นๆ";
+}
 function syncBrandField() {
   const p = $("i-prod").value;
   $("w-brand").hidden = !isRival({ product: p });
+  $("w-brand2").hidden = $("w-brand").hidden || $("i-brand").value !== "อื่นๆ";
   $("w-machine").hidden = !(PRODUCTS[p] || {}).byMachine;
 }
+$("i-brand2").oninput = () => {
+  const a = parseFloat($("i-lat").value), b = parseFloat($("i-lng").value);
+  if (!isNaN(a) && !isNaN(b)) showGhost(a, b);
+};
 $("i-prod").onchange = $("i-brand").onchange = $("i-machine").onchange = () => {
   syncBrandField();
   const a = parseFloat($("i-lat").value), b = parseFloat($("i-lng").value);
@@ -3024,7 +3235,7 @@ $("i-save").onclick = async () => {
   const rec = {
     name, phone: fixPhone($("i-phone").value), address: $("i-addr").value.trim(),
     product: $("i-prod").value,
-    brand: isRival({ product: $("i-prod").value }) ? $("i-brand").value : "",
+    brand: brandFromForm(),
     machine: (PRODUCTS[$("i-prod").value] || {}).byMachine ? $("i-machine").value : "",
     model: $("i-model").value.trim(), ssc: $("i-ssc").value,
     province: $("i-prov").value.trim(), zone: $("i-zone").value,
@@ -3442,7 +3653,7 @@ function openFromLink() {
   return true;
 }
 
-initStore().then(() => { render(); if (!openFromLink()) frame(); });
+initStore().then(() => { render(); if (!openFromLink()) frame(); setHeat(heatMode); });
 addEventListener("focus", () => { if (!busy && !$("veil").classList.contains("on") && !document.getElementById("setup")) reload(true); });
 window.__appRan = 1;
 </script>

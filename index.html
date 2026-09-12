@@ -988,6 +988,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
 .leaflet-container .leaflet-control-attribution a { color: var(--muted); }
 
 /* ---------- แผนที่ความหนาแน่น ---------- */
+.sumimg { display: block; width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
 .heatbox { padding: 10px 12px 12px; border-bottom: 1px solid var(--line); }
 .heatrow { display: flex; flex-wrap: wrap; gap: 6px; }
 .heatkey { margin-top: 9px; font-size: 11.5px; color: var(--ink-2); line-height: 1.65; }
@@ -1217,7 +1218,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v40</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v42</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -1261,6 +1262,9 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
           <div class="btn-row">
             <button class="btn" id="srvurl" title="ดู / คัดลอก / แก้ลิงก์เซิร์ฟเวอร์ที่เครื่องนี้ใช้อยู่">ลิงก์เซิร์ฟเวอร์</button>
             <button class="btn" id="pdiag" title="ตรวจว่าระบบรูปภาพพร้อมใช้หรือยัง">ตรวจระบบรูป</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn primary" id="sumgo" title="สรุปข้อมูลทั้งหมดเป็นรูปภาพ ส่งต่อในไลน์ได้">สรุปเป็นรูปภาพ</button>
           </div>
           <div class="btn-row">
             <button class="btn danger" id="delnopin" title="ลบลูกค้าที่ยังไม่มีพิกัดออกทั้งหมด">ลบรายที่รอปักหมุด</button>
@@ -1728,6 +1732,8 @@ const srvBtn = document.getElementById("srvurl");
 if (srvBtn) srvBtn.onclick = () => showSetup("edit");
 const pdBtn = document.getElementById("pdiag");
 if (pdBtn) pdBtn.onclick = () => photoDiag();
+const sumBtn = document.getElementById("sumgo");
+if (sumBtn) sumBtn.onclick = () => openSummary();
 
 /* ลบรายที่ยังไม่ได้ปักหมุดทั้งหมด — ถามยืนยันก่อนเสมอ เพราะกู้คืนไม่ได้ */
 async function delNoPinAll() {
@@ -2702,6 +2708,320 @@ function fixPhone(v) {
   const s = String(v === null || v === undefined ? "" : v).trim();
   // ขึ้นต้นด้วย 1-9 และยาว 8-9 หลัก = เลข 0 หน้าหายไป (เบอร์ไทยขึ้นต้นด้วย 0 เสมอ)
   return /^[1-9][0-9]{7,8}$/.test(s) ? "0" + s : s;
+}
+
+/* ---------------- สรุปข้อมูลเป็นรูปภาพ ---------------- */
+/*
+ * วาดลงผ้าใบเอง ไม่พึ่งไลบรารีนอก จะได้ใช้ได้ตอนเน็ตไม่มีด้วย
+ * ใช้สีชุดเดียวกับหมุดบนแผนที่ คนดูรูปกับดูแผนที่จะโยงกันได้ทันที
+ * รูปเป็นพื้นสว่างเสมอ ไม่ว่าแอปจะอยู่ธีมไหน เพราะเอาไปส่งต่อ/พิมพ์
+ */
+const SUM_INK = "#12181f", SUM_INK2 = "#5a6672", SUM_MUTED = "#8b98a5";
+const SUM_BG = "#ffffff", SUM_CARD = "#f5f7f9", SUM_LINE = "#dde3e9";
+const SUM_PROD = { "K-water": "#2a78d6", "ลูกค้า": "#ea6a12", "สินค้าคู่แข่ง": "#d93f3f",
+                   "KFC": "#c28f00", "AD คูโบต้า": "#ea6a12", "AD คู่แข่ง": "#d93f3f" };
+const SUM_BRAND = { "ยันม่าร์": "#d93f3f", "จอห์นเดียร์": "#2f9e2f", "อีซากิ": "#1f4fa8",
+                    "นิวฮอลแลนด์": "#2aa8e0", "อื่นๆ": "#7b8b9a" };
+const SUM_VISIT = { ok: "#1f9d55", warn: "#e0a92a", late: "#d93f3f", never: "#8b98a5" };
+
+function sumDate(d) {
+  try {
+    return new Intl.DateTimeFormat("th-TH-u-ca-buddhist",
+      { day: "numeric", month: "long", year: "numeric" }).format(d);
+  } catch (e) { return d.toLocaleDateString("th-TH"); }
+}
+const nfmt = n => n.toLocaleString("th-TH");
+
+/** นับตามคีย์ แล้วเรียงจากมากไปน้อย */
+function tally(list, keyOf) {
+  const m = new Map();
+  list.forEach(c => { const k = keyOf(c); if (k) m.set(k, (m.get(k) || 0) + 1); });
+  return [...m.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function sumFilterText() {
+  const bits = [];
+  if ($("f-zone").value) bits.push("เขต" + $("f-zone").value);
+  if ($("f-ssc").value) bits.push($("f-ssc").value);
+  if (selProd.size) bits.push([...selProd].join(", "));
+  if (selMach.size) bits.push([...selMach].join(", "));
+  if (selBrand.size) bits.push("ยี่ห้อ " + [...selBrand].join(", "));
+  if (selVisit.size) bits.push([...selVisit].map(k => VISIT_STATES[k].label).join(", "));
+  if ($("q").value.trim()) bits.push('ค้นหา "' + $("q").value.trim() + '"');
+  if (nearAt) bits.push("ในรัศมี " + nearKm + " กม.");
+  return bits.length ? "เฉพาะ: " + bits.join(" · ") : "ข้อมูลทั้งหมด";
+}
+
+/* ---- แผนที่ในรูปสรุป: วาดเส้นจังหวัด + หมุด เองบนผ้าใบ ----
+   ใช้ภาพจังหวัดแบบเดียวกับโหมดออฟไลน์ของแอป เพราะภาพแผ่นจากเน็ต
+   เอามาวาดลงผ้าใบแล้วเซฟเป็นรูปไม่ได้ (ติดข้อจำกัดข้ามโดเมน) */
+// เมอร์เคเตอร์ — แกนตั้งกับแกนนอนต้องใช้หน่วยเดียวกัน ไม่งั้นภาพจะยืดผิดสัดส่วน
+const merX = lng => lng * Math.PI / 180;
+const merY = lat => Math.log(Math.tan(Math.PI / 4 + (Math.max(-85, Math.min(85, lat))) * Math.PI / 360));
+
+/** แปลงคำสั่งวาดของสัญลักษณ์ (เก็บไว้เป็น SVG) ให้ผ้าใบวาดตามได้ */
+const glyphCache = {};
+function glyphOps(key) {
+  if (glyphCache[key]) return glyphCache[key];
+  const src = GLYPH[key] || "";
+  const ops = [];
+  src.replace(/<path[^>]*\bd="([^"]+)"/g, (m, d) => { ops.push({ p: new Path2D(d) }); return m; });
+  src.replace(/<circle[^>]*cx="([\d.]+)"[^>]*cy="([\d.]+)"[^>]*r="([\d.]+)"/g,
+    (m, cx, cy, r) => { ops.push({ c: [+cx, +cy, +r] }); return m; });
+  glyphCache[key] = ops;
+  return ops;
+}
+
+/** หมุดหยดน้ำ + สัญลักษณ์ข้างใน — รูปทรงเดียวกับบนแผนที่เป๊ะ */
+function drawPin(x, px, py, k, color, gkey) {
+  x.save();
+  x.translate(px - 14 * k, py - 33 * k);      // px,py = ปลายแหลมของหมุด
+  x.scale(k, k);
+  x.beginPath();
+  x.moveTo(14, 32.2);
+  x.bezierCurveTo(14, 32.2, 3.6, 20.4, 3.6, 13.8);
+  x.arc(14, 13.8, 10.4, Math.PI, 0);
+  x.bezierCurveTo(24.4, 20.4, 14, 32.2, 14, 32.2);
+  x.closePath();
+  x.fillStyle = color; x.fill();
+  x.lineWidth = 1.4; x.strokeStyle = "rgba(255,255,255,.92)"; x.stroke();
+  x.translate(5.35, 5.15); x.scale(0.72, 0.72);
+  x.strokeStyle = "#fff"; x.lineWidth = 2.3;
+  x.lineCap = "round"; x.lineJoin = "round";
+  glyphOps(gkey).forEach(o => {
+    if (o.p) x.stroke(o.p);
+    else { x.beginPath(); x.arc(o.c[0], o.c[1], o.c[2], 0, 6.2832); x.stroke(); }
+  });
+  x.restore();
+}
+
+/** วาดกล่องแผนที่ คืนจำนวนหมุดที่วาดจริง */
+function drawMiniMap(x, bx, by, bw, bh, list) {
+  const pins = list.filter(hasPin);
+  // กรอบภาพ: ยึดจากหมุดที่มี ถ้าไม่มีเลยใช้กรอบประเทศไทย
+  let la1 = 5.6, la2 = 20.5, ln1 = 97.3, ln2 = 105.7;
+  if (pins.length) {
+    la1 = Math.min(...pins.map(c => +c.lat)); la2 = Math.max(...pins.map(c => +c.lat));
+    ln1 = Math.min(...pins.map(c => +c.lng)); ln2 = Math.max(...pins.map(c => +c.lng));
+    const padLa = Math.max((la2 - la1) * 0.18, 0.45), padLn = Math.max((ln2 - ln1) * 0.18, 0.45);
+    la1 -= padLa; la2 += padLa; ln1 -= padLn; ln2 += padLn;
+  }
+  // เมอร์เคเตอร์: ค่ายิ่งเหนือยิ่งมาก แต่จอนับจากบนลงล่าง ต้องกลับด้านให้ถูก
+  const xL = merX(ln1), xSpan = merX(ln2) - xL;
+  const yTop = merY(la2), ySpan = yTop - merY(la1);
+  const sc = Math.min(bw / xSpan, bh / ySpan);
+  const offX = bx + (bw - xSpan * sc) / 2;
+  const offY = by + (bh - ySpan * sc) / 2;
+  const PX = lng => offX + (merX(lng) - xL) * sc;
+  const PY = lat => offY + (yTop - merY(lat)) * sc;
+
+  x.save();
+  x.beginPath(); x.roundRect(bx, by, bw, bh, 14); x.clip();
+  x.fillStyle = "#e8eef4"; x.fillRect(bx, by, bw, bh);
+
+  // รูปร่างจังหวัด
+  x.fillStyle = "#fbfcfd"; x.strokeStyle = "#c3cedb"; x.lineWidth = 1;
+  TH_GEO.features.forEach(f => {
+    const gs = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+    x.beginPath();
+    gs.forEach(poly => poly.forEach(ring => {
+      ring.forEach((pt, i) => { const a = PX(pt[0]), b = PY(pt[1]); i ? x.lineTo(a, b) : x.moveTo(a, b); });
+      x.closePath();
+    }));
+    x.fill(); x.stroke();
+  });
+
+  // ชื่อจังหวัดที่มีลูกค้า — ไม่มีชื่อกำกับจะดูไม่ออกว่าตรงไหนของประเทศ
+  const hasCust = new Set(list.map(c => c.province).filter(Boolean));
+  x.font = '600 13px "Noto Sans Thai","Sarabun",system-ui,sans-serif';
+  x.textAlign = "center";
+  TH_GEO.features.forEach(f => {
+    if (!hasCust.has(f.properties.name)) return;
+    const gs = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+    let a = 1e9, b = -1e9, c2 = 1e9, d = -1e9;
+    gs.forEach(poly => poly[0].forEach(pt => {
+      a = Math.min(a, pt[0]); b = Math.max(b, pt[0]);
+      c2 = Math.min(c2, pt[1]); d = Math.max(d, pt[1]);
+    }));
+    const tx = PX((a + b) / 2), ty = PY((c2 + d) / 2);
+    if (tx < bx + 30 || tx > bx + bw - 30 || ty < by + 14 || ty > by + bh - 14) return;
+    x.lineWidth = 3; x.strokeStyle = "rgba(255,255,255,.95)";
+    x.strokeText(f.properties.name, tx, ty);
+    x.fillStyle = "#7d8a97";
+    x.fillText(f.properties.name, tx, ty);
+  });
+  x.textAlign = "left";
+
+  // หมุด — เรียงจากเหนือลงใต้ ตัวที่อยู่ใต้จะทับด้านบน เหมือนบนแผนที่จริง
+  const k = pins.length > 60 ? 0.62 : pins.length > 25 ? 0.78 : 0.95;
+  [...pins].sort((a, b) => +b.lat - +a.lat).forEach(c => {
+    drawPin(x, PX(+c.lng), PY(+c.lat), k, colorOf(c), glyphOf(c));
+  });
+  x.restore();
+
+  x.strokeStyle = "#dde3e9"; x.lineWidth = 1;
+  x.beginPath(); x.roundRect(bx + .5, by + .5, bw - 1, bh - 1, 14); x.stroke();
+  return pins.length;
+}
+
+function buildSummary() {
+  const list = visible();
+  const cv = document.createElement("canvas");
+  const W = 1000, PAD = 44, S = 2;             // S = ความละเอียด 2 เท่า ภาพจะได้คมบนมือถือ
+  const x = cv.getContext("2d");
+
+  /* ---- เตรียมข้อมูลก่อน จะได้รู้ความสูงที่ต้องใช้ ---- */
+  const bySsc = tally(list, c => c.ssc);
+  const byProd = Object.keys(PRODUCTS).map(p => [p, list.filter(c => c.product === p).length]).filter(r => r[1]);
+  const rivals = list.filter(isRival);
+  const byBrand = rivals.length ? tally(rivals, c => brandKey(c)) : [];
+  const byVisit = Object.keys(VISIT_STATES).map(k => [VISIT_STATES[k].label, list.filter(c => visitState(c) === k).length, k]);
+  const nProv = new Set(list.map(c => c.province).filter(Boolean)).size;
+  const noPin = list.filter(c => !hasPin(c)).length;
+  const secs = [["ลูกค้าแยกตาม SSC", bySsc.length], ["แยกตามกลุ่มสินค้า", byProd.length]];
+  if (byBrand.length) secs.push(["คู่แข่งแยกตามยี่ห้อ", byBrand.length]);
+  secs.push(["สถานะการเข้าพบ", byVisit.length]);
+
+  const ROW = 36, HEAD = 52;
+  const MAPH = 560, LEGH = 46;
+  let H = 262 + MAPH + LEGH + 16;
+  secs.forEach(([, n]) => { H += HEAD + n * ROW + 26; });
+  H += 66;
+
+  cv.width = W * S; cv.height = H * S;
+  x.scale(S, S);
+  x.textBaseline = "middle";
+  const F = (sz, w) => `${w || 400} ${sz}px "Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif`;
+  const rr = (a, b, w, h, r) => { x.beginPath(); x.roundRect(a, b, Math.max(w, 0), h, r); x.fill(); };
+
+  x.fillStyle = SUM_BG; x.fillRect(0, 0, W, H);
+
+  /* ---- หัวเรื่อง ---- */
+  x.fillStyle = "#2a78d6"; rr(0, 0, W, 6, 0);
+  x.fillStyle = SUM_INK; x.font = F(30, 700);
+  x.fillText("สรุปข้อมูลแผนที่ลูกค้า SSC", PAD, 54);
+  x.fillStyle = SUM_INK2; x.font = F(15);
+  x.fillText(sumFilterText(), PAD, 88);
+  x.fillStyle = SUM_MUTED; x.font = F(14);
+  x.textAlign = "right";
+  x.fillText("ข้อมูล ณ " + sumDate(new Date()), W - PAD, 54);
+  x.textAlign = "left";
+
+  /* ---- ตัวเลขสรุป 4 ช่อง ---- */
+  const stale = list.filter(c => { const v = visitState(c); return v === "late" || v === "never"; }).length;
+  const kpi = [["ลูกค้าทั้งหมด", nfmt(list.length), "#2a78d6"],
+               ["จังหวัด", nfmt(nProv), "#2a78d6"],
+               ["ยังไม่ปักหมุด", nfmt(noPin), noPin ? "#e0a92a" : SUM_MUTED],
+               ["ค้างเข้าพบเกิน 6 เดือน", nfmt(stale), stale ? "#d93f3f" : SUM_MUTED]];
+  const kw = (W - PAD * 2 - 18 * 3) / 4;
+  kpi.forEach(([lab, val, col], i) => {
+    const kx = PAD + i * (kw + 18);
+    x.fillStyle = SUM_CARD; rr(kx, 118, kw, 110, 14);
+    x.fillStyle = col; x.font = F(38, 700);
+    x.fillText(val, kx + 18, 168);
+    x.fillStyle = SUM_INK2; x.font = F(13.5);
+    x.fillText(lab, kx + 18, 205);
+  });
+
+  /* ---- แถบข้อมูลแต่ละหมวด ---- */
+  /* ---- แผนที่ + แถบสัญลักษณ์สี ---- */
+  let y = 262;
+  const nPin = drawMiniMap(x, PAD, y, W - PAD * 2, MAPH, list);
+  y += MAPH + 12;
+  const used = byProd.map(r => r[0]);
+  let lx = PAD;
+  x.font = F(13);
+  used.forEach(pname => {
+    const spec = PRODUCTS[pname] || {};
+    const col = spec.byBrand ? "#d93f3f" : (SUM_PROD[pname] || SUM_MUTED);
+    x.fillStyle = col;
+    x.beginPath(); x.arc(lx + 6, y + 12, 6, 0, 6.2832); x.fill();
+    x.fillStyle = SUM_INK2;
+    x.fillText(pname, lx + 18, y + 12);
+    lx += 18 + x.measureText(pname).width + 20;
+  });
+  x.fillStyle = SUM_MUTED; x.font = F(12.5);
+  x.textAlign = "right";
+  x.fillText("ปักหมุดแล้ว " + nfmt(nPin) + " ราย" + (noPin ? " · รอปักหมุด " + nfmt(noPin) + " ราย" : ""),
+             W - PAD, y + 12);
+  x.textAlign = "left";
+  y += LEGH + 16;
+
+  const LABW = 200, VALW = 64;
+  const drawSec = (title, rows, colOf) => {
+    x.fillStyle = SUM_INK; x.font = F(19, 700);
+    x.fillText(title, PAD, y + 20);
+    x.fillStyle = SUM_LINE; x.fillRect(PAD, y + 38, W - PAD * 2, 1);
+    y += HEAD;
+    const max = Math.max(1, ...rows.map(r => r[1]));
+    const barW = W - PAD * 2 - LABW - VALW;
+    rows.forEach(r => {
+      const [lab, n] = r;
+      x.fillStyle = SUM_INK2; x.font = F(14.5);
+      const t = lab.length > 22 ? lab.slice(0, 21) + "…" : lab;
+      x.fillText(t, PAD, y + ROW / 2);
+      x.fillStyle = "#eef2f6"; rr(PAD + LABW, y + 9, barW, 18, 9);
+      x.fillStyle = colOf(r);
+      rr(PAD + LABW, y + 9, Math.max(barW * n / max, n ? 6 : 0), 18, 9);
+      x.fillStyle = SUM_INK; x.font = F(14.5, 700);
+      x.textAlign = "right";
+      x.fillText(nfmt(n), W - PAD, y + ROW / 2);
+      x.textAlign = "left";
+      y += ROW;
+    });
+    y += 26;
+  };
+
+  drawSec("ลูกค้าแยกตาม SSC", bySsc, () => "#2a78d6");
+  drawSec("แยกตามกลุ่มสินค้า", byProd, r => SUM_PROD[r[0]] || SUM_MUTED);
+  if (byBrand.length) drawSec("คู่แข่งแยกตามยี่ห้อ", byBrand, r => SUM_BRAND[r[0]] || SUM_BRAND["อื่นๆ"]);
+  drawSec("สถานะการเข้าพบ", byVisit, r => SUM_VISIT[r[2]]);
+
+  /* ---- ท้ายรูป ---- */
+  x.fillStyle = SUM_LINE; x.fillRect(PAD, H - 52, W - PAD * 2, 1);
+  x.fillStyle = SUM_MUTED; x.font = F(13);
+  x.fillText("สร้างจากแอปแผนที่ลูกค้า SSC", PAD, H - 28);
+  x.textAlign = "right";
+  x.fillText(nfmt(list.length) + " ราย · " + nfmt(nProv) + " จังหวัด", W - PAD, H - 28);
+  x.textAlign = "left";
+  return cv;
+}
+
+function openSummary() {
+  let cv;
+  try { cv = buildSummary(); }
+  catch (e) { toast("สร้างรูปสรุปไม่สำเร็จ: " + (e.message || ""), "bad"); return; }
+  const url = cv.toDataURL("image/png");
+  const fname = "สรุปลูกค้า-" + new Date().toISOString().slice(0, 10) + ".png";
+  let v = document.getElementById("sumv");
+  if (!v) {
+    v = document.createElement("div");
+    v.className = "veil"; v.id = "sumv";
+    v.innerHTML = '<div class="sheet"><div class="sheet-h"><h2>สรุปข้อมูลเป็นรูปภาพ</h2>' +
+      '<button class="x" id="sum-x2" aria-label="ปิด">✕</button></div>' +
+      '<div class="sheet-b"><img id="sum-img" class="sumimg" alt="รูปสรุปข้อมูล"></div>' +
+      '<div class="sheet-f"><button class="btn" id="sum-share" hidden>แชร์</button>' +
+      '<span style="flex:1"></span><button class="btn" id="sum-x">ปิด</button>' +
+      '<a class="btn primary" id="sum-dl" download>บันทึกรูป</a></div></div>';
+    document.body.appendChild(v);
+    const shut = () => v.classList.remove("on");
+    v.querySelector("#sum-x").onclick = shut;
+    v.querySelector("#sum-x2").onclick = shut;
+  }
+  v.querySelector("#sum-img").src = url;
+  const dl = v.querySelector("#sum-dl");
+  dl.href = url; dl.download = fname;
+  const sh = v.querySelector("#sum-share");
+  sh.hidden = !(navigator.canShare && navigator.share);
+  sh.onclick = async () => {
+    try {
+      const blob = await (await fetch(url)).blob();
+      const file = new File([blob], fname, { type: "image/png" });
+      if (navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: "สรุปข้อมูลลูกค้า SSC" });
+      else toast("เครื่องนี้แชร์รูปตรง ๆ ไม่ได้ — กดบันทึกรูปแล้วส่งเองได้", "bad");
+    } catch (e) { if (e && e.name !== "AbortError") toast("แชร์ไม่สำเร็จ กดบันทึกรูปแทนได้", "bad"); }
+  };
+  v.classList.add("on");
 }
 
 /* ---------------- แผนที่ความหนาแน่น + ช่องว่างตลาด ---------------- */

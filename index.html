@@ -1218,7 +1218,7 @@ svg.chip { width: 16px; height: 16px; flex: none; display: block; }
     <div class="brand">
       <h1>แผนที่ลูกค้า SSC</h1>
       <span class="mode" id="mode">กำลังเชื่อมต่อ…</span>
-      <span class="ver" title="เวอร์ชันของโค้ด">v42</span>
+      <span class="ver" title="เวอร์ชันของโค้ด">v43</span>
     </div>
     <div class="kpis">
       <div class="kpi"><div class="v num" id="k-all">0</div><div class="l">ลูกค้าทั้งหมด</div></div>
@@ -2752,12 +2752,13 @@ function sumFilterText() {
   return bits.length ? "เฉพาะ: " + bits.join(" · ") : "ข้อมูลทั้งหมด";
 }
 
-/* ---- แผนที่ในรูปสรุป: วาดเส้นจังหวัด + หมุด เองบนผ้าใบ ----
-   ใช้ภาพจังหวัดแบบเดียวกับโหมดออฟไลน์ของแอป เพราะภาพแผ่นจากเน็ต
-   เอามาวาดลงผ้าใบแล้วเซฟเป็นรูปไม่ได้ (ติดข้อจำกัดข้ามโดเมน) */
-// เมอร์เคเตอร์ — แกนตั้งกับแกนนอนต้องใช้หน่วยเดียวกัน ไม่งั้นภาพจะยืดผิดสัดส่วน
+/* ---- แผนที่ในรูปสรุป ----
+   ลองดึงภาพถ่ายดาวเทียมมาวาดก่อน ถ้าเซิร์ฟเวอร์ไม่อนุญาตให้เอาไปทำรูป
+   (หรือไม่มีเน็ต) จะถอยไปวาดเส้นขอบจังหวัดเองแทน รูปจะได้ออกเสมอ */
 const merX = lng => lng * Math.PI / 180;
 const merY = lat => Math.log(Math.tan(Math.PI / 4 + (Math.max(-85, Math.min(85, lat))) * Math.PI / 360));
+const SAT_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/";
+const TS = 256;
 
 /** แปลงคำสั่งวาดของสัญลักษณ์ (เก็บไว้เป็น SVG) ให้ผ้าใบวาดตามได้ */
 const glyphCache = {};
@@ -2777,6 +2778,7 @@ function drawPin(x, px, py, k, color, gkey) {
   x.save();
   x.translate(px - 14 * k, py - 33 * k);      // px,py = ปลายแหลมของหมุด
   x.scale(k, k);
+  x.shadowColor = "rgba(0,0,0,.45)"; x.shadowBlur = 5; x.shadowOffsetY = 1;
   x.beginPath();
   x.moveTo(14, 32.2);
   x.bezierCurveTo(14, 32.2, 3.6, 20.4, 3.6, 13.8);
@@ -2784,7 +2786,8 @@ function drawPin(x, px, py, k, color, gkey) {
   x.bezierCurveTo(24.4, 20.4, 14, 32.2, 14, 32.2);
   x.closePath();
   x.fillStyle = color; x.fill();
-  x.lineWidth = 1.4; x.strokeStyle = "rgba(255,255,255,.92)"; x.stroke();
+  x.shadowColor = "transparent";
+  x.lineWidth = 1.4; x.strokeStyle = "rgba(255,255,255,.95)"; x.stroke();
   x.translate(5.35, 5.15); x.scale(0.72, 0.72);
   x.strokeStyle = "#fff"; x.lineWidth = 2.3;
   x.lineCap = "round"; x.lineJoin = "round";
@@ -2795,45 +2798,81 @@ function drawPin(x, px, py, k, color, gkey) {
   x.restore();
 }
 
-/** วาดกล่องแผนที่ คืนจำนวนหมุดที่วาดจริง */
-function drawMiniMap(x, bx, by, bw, bh, list) {
+/** คำนวณกรอบและมาตราส่วนของแผนที่ในรูป */
+function mapGeom(list, bw, bh) {
   const pins = list.filter(hasPin);
-  // กรอบภาพ: ยึดจากหมุดที่มี ถ้าไม่มีเลยใช้กรอบประเทศไทย
   let la1 = 5.6, la2 = 20.5, ln1 = 97.3, ln2 = 105.7;
   if (pins.length) {
     la1 = Math.min(...pins.map(c => +c.lat)); la2 = Math.max(...pins.map(c => +c.lat));
     ln1 = Math.min(...pins.map(c => +c.lng)); ln2 = Math.max(...pins.map(c => +c.lng));
-    const padLa = Math.max((la2 - la1) * 0.18, 0.45), padLn = Math.max((ln2 - ln1) * 0.18, 0.45);
-    la1 -= padLa; la2 += padLa; ln1 -= padLn; ln2 += padLn;
+    const pa = Math.max((la2 - la1) * 0.16, 0.08), pn = Math.max((ln2 - ln1) * 0.16, 0.08);
+    la1 -= pa; la2 += pa; ln1 -= pn; ln2 += pn;
   }
-  // เมอร์เคเตอร์: ค่ายิ่งเหนือยิ่งมาก แต่จอนับจากบนลงล่าง ต้องกลับด้านให้ถูก
-  const xL = merX(ln1), xSpan = merX(ln2) - xL;
-  const yTop = merY(la2), ySpan = yTop - merY(la1);
-  const sc = Math.min(bw / xSpan, bh / ySpan);
-  const offX = bx + (bw - xSpan * sc) / 2;
-  const offY = by + (bh - ySpan * sc) / 2;
-  const PX = lng => offX + (merX(lng) - xL) * sc;
-  const PY = lat => offY + (yTop - merY(lat)) * sc;
+  // ระดับซูมมาตรฐานของแผ่นภาพ เลือกอันที่ใหญ่สุดที่ยังใส่ในกรอบได้
+  const wx = (lng, z) => (lng + 180) / 360 * TS * Math.pow(2, z);
+  const wy = (lat, z) => (1 - merY(lat) / Math.PI) / 2 * TS * Math.pow(2, z);
+  let z = 4;
+  for (let t = 18; t >= 3; t--) {
+    if (wx(ln2, t) - wx(ln1, t) <= bw && wy(la1, t) - wy(la2, t) <= bh) { z = t; break; }
+  }
+  const spanX = wx(ln2, z) - wx(ln1, z), spanY = wy(la1, z) - wy(la2, z);
+  const offX = (bw - spanX) / 2 - wx(ln1, z), offY = (bh - spanY) / 2 - wy(la2, z);
+  return { z, pins,
+    PX: lng => wx(lng, z) + offX,
+    PY: lat => wy(lat, z) + offY,
+    tiles() {
+      const out = [];
+      const x1 = Math.floor(-offX / TS), x2 = Math.floor((bw - offX) / TS);
+      const y1 = Math.floor(-offY / TS), y2 = Math.floor((bh - offY) / TS);
+      const n = Math.pow(2, z);
+      for (let ty = y1; ty <= y2; ty++) for (let tx = x1; tx <= x2; tx++) {
+        if (ty < 0 || ty >= n) continue;
+        const wrap = ((tx % n) + n) % n;
+        out.push({ url: SAT_URL + z + "/" + ty + "/" + wrap, px: tx * TS + offX, py: ty * TS + offY });
+      }
+      return out.slice(0, 48);
+    } };
+}
 
+function loadImg(url) {
+  return new Promise(res => {
+    const im = new Image();
+    im.crossOrigin = "anonymous";
+    const t = setTimeout(() => res(null), 8000);
+    im.onload = () => { clearTimeout(t); res(im); };
+    im.onerror = () => { clearTimeout(t); res(null); };
+    im.src = url;
+  });
+}
+
+/** วาดกล่องแผนที่ — คืนว่าใช้ภาพดาวเทียมได้หรือไม่ */
+function drawMiniMap(x, bx, by, bw, bh, list, geo, sat) {
+  const PX = lng => bx + geo.PX(lng), PY = lat => by + geo.PY(lat);
   x.save();
   x.beginPath(); x.roundRect(bx, by, bw, bh, 14); x.clip();
-  x.fillStyle = "#e8eef4"; x.fillRect(bx, by, bw, bh);
 
-  // รูปร่างจังหวัด
-  x.fillStyle = "#fbfcfd"; x.strokeStyle = "#c3cedb"; x.lineWidth = 1;
-  TH_GEO.features.forEach(f => {
-    const gs = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
-    x.beginPath();
-    gs.forEach(poly => poly.forEach(ring => {
-      ring.forEach((pt, i) => { const a = PX(pt[0]), b = PY(pt[1]); i ? x.lineTo(a, b) : x.moveTo(a, b); });
-      x.closePath();
-    }));
-    x.fill(); x.stroke();
-  });
+  let onSat = false;
+  if (sat && sat.length) {
+    x.fillStyle = "#20303d"; x.fillRect(bx, by, bw, bh);
+    sat.forEach(t => { if (t.im) x.drawImage(t.im, bx + t.px, by + t.py, TS, TS); });
+    onSat = true;
+  } else {
+    x.fillStyle = "#e8eef4"; x.fillRect(bx, by, bw, bh);
+    x.fillStyle = "#fbfcfd"; x.strokeStyle = "#c3cedb"; x.lineWidth = 1;
+    TH_GEO.features.forEach(f => {
+      const gs = f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates;
+      x.beginPath();
+      gs.forEach(poly => poly.forEach(ring => {
+        ring.forEach((pt, i) => { const a = PX(pt[0]), b = PY(pt[1]); i ? x.lineTo(a, b) : x.moveTo(a, b); });
+        x.closePath();
+      }));
+      x.fill(); x.stroke();
+    });
+  }
 
   // ชื่อจังหวัดที่มีลูกค้า — ไม่มีชื่อกำกับจะดูไม่ออกว่าตรงไหนของประเทศ
   const hasCust = new Set(list.map(c => c.province).filter(Boolean));
-  x.font = '600 13px "Noto Sans Thai","Sarabun",system-ui,sans-serif';
+  x.font = '700 14px "Noto Sans Thai","Sarabun",system-ui,sans-serif';
   x.textAlign = "center";
   TH_GEO.features.forEach(f => {
     if (!hasCust.has(f.properties.name)) return;
@@ -2844,49 +2883,57 @@ function drawMiniMap(x, bx, by, bw, bh, list) {
       c2 = Math.min(c2, pt[1]); d = Math.max(d, pt[1]);
     }));
     const tx = PX((a + b) / 2), ty = PY((c2 + d) / 2);
-    if (tx < bx + 30 || tx > bx + bw - 30 || ty < by + 14 || ty > by + bh - 14) return;
-    x.lineWidth = 3; x.strokeStyle = "rgba(255,255,255,.95)";
+    if (tx < bx + 34 || tx > bx + bw - 34 || ty < by + 16 || ty > by + bh - 16) return;
+    x.lineWidth = 3.5;
+    x.strokeStyle = onSat ? "rgba(0,0,0,.55)" : "rgba(255,255,255,.95)";
     x.strokeText(f.properties.name, tx, ty);
-    x.fillStyle = "#7d8a97";
+    x.fillStyle = onSat ? "#ffffff" : "#7d8a97";
     x.fillText(f.properties.name, tx, ty);
   });
   x.textAlign = "left";
 
   // หมุด — เรียงจากเหนือลงใต้ ตัวที่อยู่ใต้จะทับด้านบน เหมือนบนแผนที่จริง
-  const k = pins.length > 60 ? 0.62 : pins.length > 25 ? 0.78 : 0.95;
-  [...pins].sort((a, b) => +b.lat - +a.lat).forEach(c => {
+  const k = geo.pins.length > 60 ? 0.68 : geo.pins.length > 25 ? 0.85 : 1;
+  [...geo.pins].sort((a, b) => +b.lat - +a.lat).forEach(c => {
     drawPin(x, PX(+c.lng), PY(+c.lat), k, colorOf(c), glyphOf(c));
   });
-  x.restore();
 
+  if (onSat) {
+    x.font = '11px system-ui,sans-serif';
+    x.fillStyle = "rgba(255,255,255,.8)";
+    x.textAlign = "right";
+    x.fillText("ภาพถ่าย: Esri, Maxar, Earthstar Geographics", bx + bw - 10, by + bh - 10);
+    x.textAlign = "left";
+  }
+  x.restore();
   x.strokeStyle = "#dde3e9"; x.lineWidth = 1;
   x.beginPath(); x.roundRect(bx + .5, by + .5, bw - 1, bh - 1, 14); x.stroke();
-  return pins.length;
+  return onSat;
 }
 
-function buildSummary() {
+async function buildSummary() {
   const list = visible();
   const cv = document.createElement("canvas");
-  const W = 1000, PAD = 44, S = 2;             // S = ความละเอียด 2 เท่า ภาพจะได้คมบนมือถือ
+  const W = 1600, PAD = 44, S = 2;             // แนวนอน · S = ความละเอียด 2 เท่า
   const x = cv.getContext("2d");
 
-  /* ---- เตรียมข้อมูลก่อน จะได้รู้ความสูงที่ต้องใช้ ---- */
-  const bySsc = tally(list, c => c.ssc);
+  /* ---- ข้อมูล ---- */
   const byProd = Object.keys(PRODUCTS).map(p => [p, list.filter(c => c.product === p).length]).filter(r => r[1]);
   const rivals = list.filter(isRival);
   const byBrand = rivals.length ? tally(rivals, c => brandKey(c)) : [];
-  const byVisit = Object.keys(VISIT_STATES).map(k => [VISIT_STATES[k].label, list.filter(c => visitState(c) === k).length, k]);
   const nProv = new Set(list.map(c => c.province).filter(Boolean)).size;
   const noPin = list.filter(c => !hasPin(c)).length;
-  const secs = [["ลูกค้าแยกตาม SSC", bySsc.length], ["แยกตามกลุ่มสินค้า", byProd.length]];
-  if (byBrand.length) secs.push(["คู่แข่งแยกตามยี่ห้อ", byBrand.length]);
-  secs.push(["สถานะการเข้าพบ", byVisit.length]);
+  const stale = list.filter(c => { const v = visitState(c); return v === "late" || v === "never"; }).length;
 
-  const ROW = 36, HEAD = 52;
-  const MAPH = 560, LEGH = 46;
-  let H = 262 + MAPH + LEGH + 16;
-  secs.forEach(([, n]) => { H += HEAD + n * ROW + 26; });
-  H += 66;
+  const ROW = 34, HEAD = 50, KPIH = 96;
+  let rightH = KPIH * 2 + 16 + 18;
+  rightH += HEAD + byProd.length * ROW + 22;
+  if (byBrand.length) rightH += HEAD + byBrand.length * ROW + 22;
+  const H = Math.max(900, 108 + rightH + 56);
+
+  const MAPW = 940, MAPX = PAD, MAPY = 108;
+  const MAPH = H - MAPY - 56 - 40;
+  const RX = MAPX + MAPW + 30, RW = W - PAD - RX;
 
   cv.width = W * S; cv.height = H * S;
   x.scale(S, S);
@@ -2895,109 +2942,118 @@ function buildSummary() {
   const rr = (a, b, w, h, r) => { x.beginPath(); x.roundRect(a, b, Math.max(w, 0), h, r); x.fill(); };
 
   x.fillStyle = SUM_BG; x.fillRect(0, 0, W, H);
+  x.fillStyle = "#2a78d6"; x.fillRect(0, 0, W, 6);
 
   /* ---- หัวเรื่อง ---- */
-  x.fillStyle = "#2a78d6"; rr(0, 0, W, 6, 0);
-  x.fillStyle = SUM_INK; x.font = F(30, 700);
+  x.fillStyle = SUM_INK; x.font = F(32, 700);
   x.fillText("สรุปข้อมูลแผนที่ลูกค้า SSC", PAD, 54);
   x.fillStyle = SUM_INK2; x.font = F(15);
-  x.fillText(sumFilterText(), PAD, 88);
+  x.fillText(sumFilterText(), PAD, 86);
   x.fillStyle = SUM_MUTED; x.font = F(14);
   x.textAlign = "right";
   x.fillText("ข้อมูล ณ " + sumDate(new Date()), W - PAD, 54);
   x.textAlign = "left";
 
-  /* ---- ตัวเลขสรุป 4 ช่อง ---- */
-  const stale = list.filter(c => { const v = visitState(c); return v === "late" || v === "never"; }).length;
+  /* ---- แผนที่ (ซ้าย) ---- */
+  const geo = mapGeom(list, MAPW, MAPH);
+  let sat = null;
+  if (geo.pins.length) {
+    try {
+      const want = geo.tiles();
+      const got = await Promise.all(want.map(async t => ({ ...t, im: await loadImg(t.url) })));
+      if (got.filter(t => t.im).length >= Math.ceil(want.length * 0.7)) sat = got;
+    } catch (e) {}
+  }
+  const onSat = drawMiniMap(x, MAPX, MAPY, MAPW, MAPH, list, geo, sat);
+
+  let ly = MAPY + MAPH + 22;
+  let lx = MAPX;
+  x.font = F(13.5);
+  byProd.forEach(r => {
+    const spec = PRODUCTS[r[0]] || {};
+    x.fillStyle = spec.byBrand ? "#d93f3f" : (SUM_PROD[r[0]] || SUM_MUTED);
+    x.beginPath(); x.arc(lx + 6, ly, 6, 0, 6.2832); x.fill();
+    x.fillStyle = SUM_INK2;
+    x.fillText(r[0], lx + 18, ly);
+    lx += 18 + x.measureText(r[0]).width + 20;
+  });
+  x.fillStyle = SUM_MUTED; x.font = F(12.5);
+  x.textAlign = "right";
+  x.fillText("ปักหมุดแล้ว " + nfmt(geo.pins.length) + " ราย" + (noPin ? " · รอปักหมุด " + nfmt(noPin) : ""),
+             MAPX + MAPW, ly);
+  x.textAlign = "left";
+
+  /* ---- ตัวเลขสรุป + กราฟ (ขวา) ---- */
   const kpi = [["ลูกค้าทั้งหมด", nfmt(list.length), "#2a78d6"],
                ["จังหวัด", nfmt(nProv), "#2a78d6"],
                ["ยังไม่ปักหมุด", nfmt(noPin), noPin ? "#e0a92a" : SUM_MUTED],
                ["ค้างเข้าพบเกิน 6 เดือน", nfmt(stale), stale ? "#d93f3f" : SUM_MUTED]];
-  const kw = (W - PAD * 2 - 18 * 3) / 4;
+  const kw = (RW - 16) / 2;
   kpi.forEach(([lab, val, col], i) => {
-    const kx = PAD + i * (kw + 18);
-    x.fillStyle = SUM_CARD; rr(kx, 118, kw, 110, 14);
-    x.fillStyle = col; x.font = F(38, 700);
-    x.fillText(val, kx + 18, 168);
-    x.fillStyle = SUM_INK2; x.font = F(13.5);
-    x.fillText(lab, kx + 18, 205);
+    const kx = RX + (i % 2) * (kw + 16), ky = MAPY + Math.floor(i / 2) * (KPIH + 16);
+    x.fillStyle = SUM_CARD; rr(kx, ky, kw, KPIH, 14);
+    x.fillStyle = col; x.font = F(34, 700);
+    x.fillText(val, kx + 16, ky + 40);
+    x.fillStyle = SUM_INK2; x.font = F(13);
+    x.fillText(lab, kx + 16, ky + 72);
   });
 
-  /* ---- แถบข้อมูลแต่ละหมวด ---- */
-  /* ---- แผนที่ + แถบสัญลักษณ์สี ---- */
-  let y = 262;
-  const nPin = drawMiniMap(x, PAD, y, W - PAD * 2, MAPH, list);
-  y += MAPH + 12;
-  const used = byProd.map(r => r[0]);
-  let lx = PAD;
-  x.font = F(13);
-  used.forEach(pname => {
-    const spec = PRODUCTS[pname] || {};
-    const col = spec.byBrand ? "#d93f3f" : (SUM_PROD[pname] || SUM_MUTED);
-    x.fillStyle = col;
-    x.beginPath(); x.arc(lx + 6, y + 12, 6, 0, 6.2832); x.fill();
-    x.fillStyle = SUM_INK2;
-    x.fillText(pname, lx + 18, y + 12);
-    lx += 18 + x.measureText(pname).width + 20;
-  });
-  x.fillStyle = SUM_MUTED; x.font = F(12.5);
-  x.textAlign = "right";
-  x.fillText("ปักหมุดแล้ว " + nfmt(nPin) + " ราย" + (noPin ? " · รอปักหมุด " + nfmt(noPin) + " ราย" : ""),
-             W - PAD, y + 12);
-  x.textAlign = "left";
-  y += LEGH + 16;
-
-  const LABW = 200, VALW = 64;
+  let y = MAPY + KPIH * 2 + 16 + 26;
+  const LABW = 150, VALW = 48;
   const drawSec = (title, rows, colOf) => {
-    x.fillStyle = SUM_INK; x.font = F(19, 700);
-    x.fillText(title, PAD, y + 20);
-    x.fillStyle = SUM_LINE; x.fillRect(PAD, y + 38, W - PAD * 2, 1);
+    x.fillStyle = SUM_INK; x.font = F(18, 700);
+    x.fillText(title, RX, y + 18);
+    x.fillStyle = SUM_LINE; x.fillRect(RX, y + 34, RW, 1);
     y += HEAD;
     const max = Math.max(1, ...rows.map(r => r[1]));
-    const barW = W - PAD * 2 - LABW - VALW;
+    const barW = RW - LABW - VALW;
     rows.forEach(r => {
-      const [lab, n] = r;
-      x.fillStyle = SUM_INK2; x.font = F(14.5);
-      const t = lab.length > 22 ? lab.slice(0, 21) + "…" : lab;
-      x.fillText(t, PAD, y + ROW / 2);
-      x.fillStyle = "#eef2f6"; rr(PAD + LABW, y + 9, barW, 18, 9);
+      x.fillStyle = SUM_INK2; x.font = F(14);
+      const t = r[0].length > 17 ? r[0].slice(0, 16) + "…" : r[0];
+      x.fillText(t, RX, y + ROW / 2);
+      x.fillStyle = "#eef2f6"; rr(RX + LABW, y + 8, barW, 17, 8.5);
       x.fillStyle = colOf(r);
-      rr(PAD + LABW, y + 9, Math.max(barW * n / max, n ? 6 : 0), 18, 9);
-      x.fillStyle = SUM_INK; x.font = F(14.5, 700);
+      rr(RX + LABW, y + 8, Math.max(barW * r[1] / max, r[1] ? 6 : 0), 17, 8.5);
+      x.fillStyle = SUM_INK; x.font = F(14, 700);
       x.textAlign = "right";
-      x.fillText(nfmt(n), W - PAD, y + ROW / 2);
+      x.fillText(nfmt(r[1]), RX + RW, y + ROW / 2);
       x.textAlign = "left";
       y += ROW;
     });
-    y += 26;
+    y += 22;
   };
-
-  drawSec("ลูกค้าแยกตาม SSC", bySsc, () => "#2a78d6");
   drawSec("แยกตามกลุ่มสินค้า", byProd, r => SUM_PROD[r[0]] || SUM_MUTED);
   if (byBrand.length) drawSec("คู่แข่งแยกตามยี่ห้อ", byBrand, r => SUM_BRAND[r[0]] || SUM_BRAND["อื่นๆ"]);
-  drawSec("สถานะการเข้าพบ", byVisit, r => SUM_VISIT[r[2]]);
 
   /* ---- ท้ายรูป ---- */
-  x.fillStyle = SUM_LINE; x.fillRect(PAD, H - 52, W - PAD * 2, 1);
+  x.fillStyle = SUM_LINE; x.fillRect(PAD, H - 44, W - PAD * 2, 1);
   x.fillStyle = SUM_MUTED; x.font = F(13);
-  x.fillText("สร้างจากแอปแผนที่ลูกค้า SSC", PAD, H - 28);
+  x.fillText("สร้างจากแอปแผนที่ลูกค้า SSC" + (onSat ? "" : " · แผนที่แบบเส้นขอบจังหวัด (ดึงภาพดาวเทียมไม่ได้)"), PAD, H - 22);
   x.textAlign = "right";
-  x.fillText(nfmt(list.length) + " ราย · " + nfmt(nProv) + " จังหวัด", W - PAD, H - 28);
+  x.fillText(nfmt(list.length) + " ราย · " + nfmt(nProv) + " จังหวัด", W - PAD, H - 22);
   x.textAlign = "left";
   return cv;
 }
 
-function openSummary() {
-  let cv;
-  try { cv = buildSummary(); }
-  catch (e) { toast("สร้างรูปสรุปไม่สำเร็จ: " + (e.message || ""), "bad"); return; }
-  const url = cv.toDataURL("image/png");
+async function openSummary() {
+  const btn = $("sumgo");
+  if (btn) { btn.disabled = true; btn.textContent = "กำลังสร้างรูป…"; }
+  let url;
+  try {
+    const cv = await buildSummary();
+    url = cv.toDataURL("image/png");
+  } catch (e) {
+    toast("สร้างรูปสรุปไม่สำเร็จ: " + (e.message || ""), "bad");
+    if (btn) { btn.disabled = false; btn.textContent = "สรุปเป็นรูปภาพ"; }
+    return;
+  }
+  if (btn) { btn.disabled = false; btn.textContent = "สรุปเป็นรูปภาพ"; }
   const fname = "สรุปลูกค้า-" + new Date().toISOString().slice(0, 10) + ".png";
   let v = document.getElementById("sumv");
   if (!v) {
     v = document.createElement("div");
     v.className = "veil"; v.id = "sumv";
-    v.innerHTML = '<div class="sheet"><div class="sheet-h"><h2>สรุปข้อมูลเป็นรูปภาพ</h2>' +
+    v.innerHTML = '<div class="sheet wide"><div class="sheet-h"><h2>สรุปข้อมูลเป็นรูปภาพ</h2>' +
       '<button class="x" id="sum-x2" aria-label="ปิด">✕</button></div>' +
       '<div class="sheet-b"><img id="sum-img" class="sumimg" alt="รูปสรุปข้อมูล"></div>' +
       '<div class="sheet-f"><button class="btn" id="sum-share" hidden>แชร์</button>' +

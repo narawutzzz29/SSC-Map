@@ -2735,7 +2735,7 @@ function fixPhone(v) {
  * รูปเป็นพื้นสว่างเสมอ ไม่ว่าแอปจะอยู่ธีมไหน เพราะเอาไปส่งต่อ/พิมพ์
  */
 const SUM_INK = "#12181f", SUM_INK2 = "#5a6672", SUM_MUTED = "#8b98a5";
-const SUM_BG = "#ffffff", SUM_CARD = "#f5f7f9", SUM_LINE = "#dde3e9";
+const SUM_BG = "#f4f6f9", SUM_CARD = "#ffffff", SUM_LINE = "#e5eaf0";
 const SUM_PROD = { "K-water": "#2a78d6", "ลูกค้า": "#ea6a12", "สินค้าคู่แข่ง": "#d93f3f",
                    "KFC": "#c28f00", "AD คูโบต้า": "#ea6a12", "AD คู่แข่ง": "#d93f3f" };
 const SUM_BRAND = { "ยันม่าร์": "#d93f3f", "จอห์นเดียร์": "#2f9e2f", "อีซากิ": "#1f4fa8",
@@ -2816,39 +2816,42 @@ function drawPin(x, px, py, k, color, gkey) {
   x.restore();
 }
 
-/** คำนวณกรอบและมาตราส่วนของแผนที่ในรูป */
+/** คำนวณกรอบและมาตราส่วนของแผนที่ในรูป — ซูมพอดีกลุ่มหมุด ไม่เหลือพื้นที่ว่าง */
 function mapGeom(list, bw, bh) {
   const pins = list.filter(hasPin);
+  const ML = 30, MR = 30, MT = 48, MB = 26;          // เผื่อขอบ หมุดจะได้ไม่โดนตัด
+  const iw = Math.max(bw - ML - MR, 40), ih = Math.max(bh - MT - MB, 40);
   let la1 = 5.6, la2 = 20.5, ln1 = 97.3, ln2 = 105.7;
   if (pins.length) {
     la1 = Math.min(...pins.map(c => +c.lat)); la2 = Math.max(...pins.map(c => +c.lat));
     ln1 = Math.min(...pins.map(c => +c.lng)); ln2 = Math.max(...pins.map(c => +c.lng));
-    const pa = Math.max((la2 - la1) * 0.16, 0.08), pn = Math.max((ln2 - ln1) * 0.16, 0.08);
-    la1 -= pa; la2 += pa; ln1 -= pn; ln2 += pn;
+    const ma = (la1 + la2) / 2, mn = (ln1 + ln2) / 2;
+    if (la2 - la1 < 0.14) { la1 = ma - 0.07; la2 = ma + 0.07; }   // มีหมุดเดียวก็ยังมีกรอบ
+    if (ln2 - ln1 < 0.14) { ln1 = mn - 0.07; ln2 = mn + 0.07; }
   }
-  // ระดับซูมมาตรฐานของแผ่นภาพ เลือกอันที่ใหญ่สุดที่ยังใส่ในกรอบได้
-  const wx = (lng, z) => (lng + 180) / 360 * TS * Math.pow(2, z);
-  const wy = (lat, z) => (1 - merY(lat) / Math.PI) / 2 * TS * Math.pow(2, z);
-  let z = 4;
-  for (let t = 18; t >= 3; t--) {
-    if (wx(ln2, t) - wx(ln1, t) <= bw && wy(la1, t) - wy(la2, t) <= bh) { z = t; break; }
-  }
-  const spanX = wx(ln2, z) - wx(ln1, z), spanY = wy(la1, z) - wy(la2, z);
-  const offX = (bw - spanX) / 2 - wx(ln1, z), offY = (bh - spanY) / 2 - wy(la2, z);
-  return { z, pins,
-    PX: lng => wx(lng, z) + offX,
-    PY: lat => wy(lat, z) + offY,
+  const ux = lng => (lng + 180) / 360;
+  const uy = lat => (1 - merY(lat) / Math.PI) / 2;
+  const u1 = ux(ln1), u2 = ux(ln2), v1 = uy(la2), v2 = uy(la1);
+  const sc = Math.min(iw / (u2 - u1), ih / (v2 - v1));            // พิกเซลต่อหนึ่งหน่วยโลก
+  const offX = ML + (iw - (u2 - u1) * sc) / 2 - u1 * sc;
+  const offY = MT + (ih - (v2 - v1) * sc) / 2 - v1 * sc;
+  // เลือกความละเอียดแผ่นภาพให้คมที่สุดโดยไม่ต้องขยายเกินตัว
+  let z = Math.ceil(Math.log2(sc / TS));
+  z = Math.max(2, Math.min(17, isFinite(z) ? z : 4));
+  const TSZ = sc / Math.pow(2, z);
+  return { z, pins, tsz: TSZ,
+    PX: lng => ux(lng) * sc + offX,
+    PY: lat => uy(lat) * sc + offY,
     tiles() {
-      const out = [];
-      const x1 = Math.floor(-offX / TS), x2 = Math.floor((bw - offX) / TS);
-      const y1 = Math.floor(-offY / TS), y2 = Math.floor((bh - offY) / TS);
-      const n = Math.pow(2, z);
+      const out = [], n = Math.pow(2, z);
+      const x1 = Math.floor(-offX / TSZ), x2 = Math.floor((bw - offX) / TSZ);
+      const y1 = Math.floor(-offY / TSZ), y2 = Math.floor((bh - offY) / TSZ);
       for (let ty = y1; ty <= y2; ty++) for (let tx = x1; tx <= x2; tx++) {
         if (ty < 0 || ty >= n) continue;
         const wrap = ((tx % n) + n) % n;
-        out.push({ url: SAT_URL + z + "/" + ty + "/" + wrap, px: tx * TS + offX, py: ty * TS + offY });
+        out.push({ url: SAT_URL + z + "/" + ty + "/" + wrap, px: tx * TSZ + offX, py: ty * TSZ + offY });
       }
-      return out.slice(0, 48);
+      return out.slice(0, 90);
     } };
 }
 
@@ -2872,7 +2875,8 @@ function drawMiniMap(x, bx, by, bw, bh, list, geo, sat) {
   let onSat = false;
   if (sat && sat.length) {
     x.fillStyle = "#20303d"; x.fillRect(bx, by, bw, bh);
-    sat.forEach(t => { if (t.im) x.drawImage(t.im, bx + t.px, by + t.py, TS, TS); });
+    const tz = geo.tsz + 1;      // เผื่อ 1 พิกเซล กันเห็นรอยต่อแผ่นภาพ
+    sat.forEach(t => { if (t.im) x.drawImage(t.im, bx + t.px, by + t.py, tz, tz); });
     onSat = true;
   } else {
     x.fillStyle = "#e8eef4"; x.fillRect(bx, by, bw, bh);
@@ -2917,6 +2921,9 @@ function drawMiniMap(x, bx, by, bw, bh, list, geo, sat) {
   });
 
   if (onSat) {
+    const sh = x.createLinearGradient(0, by + bh - 54, 0, by + bh);
+    sh.addColorStop(0, "rgba(0,0,0,0)"); sh.addColorStop(1, "rgba(0,0,0,.45)");
+    x.fillStyle = sh; x.fillRect(bx, by + bh - 54, bw, 54);
     x.font = '11px system-ui,sans-serif';
     x.fillStyle = "rgba(255,255,255,.8)";
     x.textAlign = "right";
@@ -2944,33 +2951,61 @@ async function buildSummary() {
   const noPin = list.filter(c => !hasPin(c)).length;
   const stale = list.filter(c => { const v = visitState(c); return v === "late" || v === "never"; }).length;
 
-  /* ---- วางผัง: แผนที่ซ้าย · ขวาแบ่งเป็นสองคอลัมน์ รูปจะได้ไม่ยืดยาวลงล่าง ---- */
-  const ROW = 34, HEAD = 50, KPIH = 96, GAP = 22;
-  const MAPX = PAD, MAPY = 108, MAPW = 1000;
+  /* ---- วางผัง: แผนที่ซ้าย · ขวาแบ่งเป็นสองคอลัมน์ ---- */
+  const ROW = 34, KPIH = 96, GAP = 22;
+  const MAPX = PAD, MAPY = 108, MAPW = 950;
   const RX = MAPX + MAPW + 30, RW = W - PAD - RX;
   const CW = (RW - GAP) / 2, CX1 = RX, CX2 = RX + CW + GAP;
-  const secH = rows => rows.length ? HEAD + rows.length * ROW + GAP : 0;
+  const secH = rows => rows.length ? 58 + rows.length * ROW + 14 : 0;
+  const colH = rows => rows.length ? secH(rows) + 20 : 0;
   const TOP = MAPY + KPIH * 2 + 16 + 26;
-  const H = Math.max(1080, TOP + Math.max(secH(byProd) + secH(byBrand), secH(bySsc)) + 56);
-  const MAPH = H - MAPY - 56 - 40;
+  const H = Math.max(1080, TOP + Math.max(colH(byProd) + colH(byBrand), colH(bySsc)) + 56);
+  const MAPH = H - MAPY - 56 - 48;
 
   cv.width = W * S; cv.height = H * S;
   x.scale(S, S);
   x.textBaseline = "middle";
   const F = (sz, w) => `${w || 400} ${sz}px "Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif`;
   const rr = (a, b, w, h, r) => { x.beginPath(); x.roundRect(a, b, Math.max(w, 0), h, r); x.fill(); };
+  /** การ์ดขาวมีเงานุ่ม ๆ — ทำให้รูปดูเป็นแดชบอร์ด ไม่ใช่กระดาษเปล่า */
+  const card = (a, b, w, h, r) => {
+    r = r || 16;
+    x.save();
+    x.shadowColor = "rgba(16,24,40,.08)"; x.shadowBlur = 16; x.shadowOffsetY = 3;
+    x.fillStyle = SUM_CARD; rr(a, b, w, h, r);
+    x.restore();
+    x.strokeStyle = SUM_LINE; x.lineWidth = 1;
+    x.beginPath(); x.roundRect(a + .5, b + .5, w - 1, h - 1, r); x.stroke();
+  };
 
   x.fillStyle = SUM_BG; x.fillRect(0, 0, W, H);
-  x.fillStyle = "#2a78d6"; x.fillRect(0, 0, W, 6);
+  const top = x.createLinearGradient(0, 0, W, 0);
+  top.addColorStop(0, "#2a78d6"); top.addColorStop(1, "#49b0e8");
+  x.fillStyle = top; x.fillRect(0, 0, W, 7);
 
-  /* ---- หัวเรื่อง ---- */
-  x.fillStyle = SUM_INK; x.font = F(32, 700);
-  x.fillText("สรุปข้อมูลแผนที่ลูกค้า SSC", PAD, 54);
+  /* ---- หัวเรื่อง + ตราหมุด ---- */
+  x.save();
+  const bg = x.createLinearGradient(PAD, 26, PAD + 46, 72);
+  bg.addColorStop(0, "#3f8ae0"); bg.addColorStop(1, "#2565bd");
+  x.fillStyle = bg; rr(PAD, 26, 46, 46, 13);
+  x.translate(PAD + 23, 33); x.scale(.88, .88);
+  x.beginPath();
+  x.moveTo(0, 17.5);
+  x.bezierCurveTo(0, 17.5, -8.4, 7.8, -8.4, 2.6);
+  x.arc(0, 2.6, 8.4, Math.PI, 0);
+  x.bezierCurveTo(8.4, 7.8, 0, 17.5, 0, 17.5);
+  x.closePath();
+  x.fillStyle = "#fff"; x.fill();
+  x.beginPath(); x.arc(0, 2.6, 3.2, 0, 6.2832); x.fillStyle = "#2565bd"; x.fill();
+  x.restore();
+
+  x.fillStyle = SUM_INK; x.font = F(31, 700);
+  x.fillText("สรุปข้อมูลแผนที่ลูกค้า SSC", PAD + 62, 43);
   x.fillStyle = SUM_INK2; x.font = F(15);
-  x.fillText(sumFilterText(), PAD, 86);
+  x.fillText(sumFilterText(), PAD + 62, 71);
   x.fillStyle = SUM_MUTED; x.font = F(14);
   x.textAlign = "right";
-  x.fillText("ข้อมูล ณ " + sumDate(new Date()), W - PAD, 54);
+  x.fillText("ข้อมูล ณ " + sumDate(new Date()), W - PAD, 50);
   x.textAlign = "left";
 
   /* ---- แผนที่ (ซ้าย) ---- */
@@ -2983,10 +3018,17 @@ async function buildSummary() {
       if (got.filter(t => t.im).length >= Math.ceil(want.length * 0.7)) sat = got;
     } catch (e) {}
   }
+  x.save();
+  x.shadowColor = "rgba(16,24,40,.14)"; x.shadowBlur = 20; x.shadowOffsetY = 4;
+  x.fillStyle = "#ffffff"; rr(MAPX, MAPY, MAPW, MAPH, 16);
+  x.restore();
   const onSat = drawMiniMap(x, MAPX, MAPY, MAPW, MAPH, list, geo, sat);
 
-  const ly = MAPY + MAPH + 22;
-  let lx = MAPX;
+  /* ---- แถบคำอธิบายสีใต้แผนที่ ---- */
+  const LGY = MAPY + MAPH + 12, LGH = 36;
+  card(MAPX, LGY, MAPW, LGH, 12);
+  const ly = LGY + LGH / 2;
+  let lx = MAPX + 16;
   x.font = F(13.5);
   byProd.forEach(r => {
     const spec = PRODUCTS[r[0]] || {};
@@ -2999,7 +3041,7 @@ async function buildSummary() {
   x.fillStyle = SUM_MUTED; x.font = F(12.5);
   x.textAlign = "right";
   x.fillText("ปักหมุดแล้ว " + nfmt(geo.pins.length) + " ราย" + (noPin ? " · รอปักหมุด " + nfmt(noPin) : ""),
-             MAPX + MAPW, ly);
+             MAPX + MAPW - 16, ly);
   x.textAlign = "left";
 
   /* ---- การ์ดตัวเลข (ขวาบน) ---- */
@@ -3009,41 +3051,50 @@ async function buildSummary() {
                ["ค้างเข้าพบเกิน 6 เดือน", nfmt(stale), stale ? "#d93f3f" : SUM_MUTED]];
   kpi.forEach(([lab, val, col], i) => {
     const kx = i % 2 ? CX2 : CX1, ky = MAPY + Math.floor(i / 2) * (KPIH + 16);
-    x.fillStyle = SUM_CARD; rr(kx, ky, CW, KPIH, 14);
+    card(kx, ky, CW, KPIH, 16);
+    x.fillStyle = col; rr(kx + 18, ky + 24, 4, 48, 2);
     x.fillStyle = col; x.font = F(34, 700);
-    x.fillText(val, kx + 16, ky + 40);
+    x.fillText(val, kx + 34, ky + 42);
     x.fillStyle = SUM_INK2; x.font = F(13);
-    x.fillText(lab, kx + 16, ky + 72);
+    x.fillText(lab, kx + 34, ky + 72);
   });
 
   /* ---- กราฟแท่ง ---- */
-  const LABW = 132, VALW = 42;
-  const drawSec = (cx, y, title, rows, colOf) => {
-    x.fillStyle = SUM_INK; x.font = F(18, 700);
-    x.fillText(title, cx, y + 18);
-    x.fillStyle = SUM_LINE; x.fillRect(cx, y + 34, CW, 1);
-    y += HEAD;
+  const drawSec = (cx, y, title, rows, colOf, accent) => {
+    const h = secH(rows);
+    card(cx, y, CW, h, 16);
+    x.fillStyle = accent; rr(cx + 18, y + 19, 4, 18, 2);
+    x.fillStyle = SUM_INK; x.font = F(17, 700);
+    x.fillText(title, cx + 30, y + 28);
+    x.fillStyle = SUM_LINE; x.fillRect(cx + 18, y + 46, CW - 36, 1);
+
+    const IW = CW - 36, LABW = 116, CNTW = 34, PCTW = 44;
+    const barW = IW - LABW - CNTW - PCTW - 12;
     const max = Math.max(1, ...rows.map(r => r[1]));
-    const barW = CW - LABW - VALW;
+    const sum = rows.reduce((a, r) => a + r[1], 0) || 1;
+    let ry = y + 58;
     rows.forEach(r => {
+      const cy = ry + ROW / 2;
       x.fillStyle = SUM_INK2; x.font = F(14);
-      const t = r[0].length > 15 ? r[0].slice(0, 14) + "…" : r[0];
-      x.fillText(t, cx, y + ROW / 2);
-      x.fillStyle = "#eef2f6"; rr(cx + LABW, y + 8, barW, 17, 8.5);
+      const t = r[0].length > 14 ? r[0].slice(0, 13) + "…" : r[0];
+      x.fillText(t, cx + 18, cy);
+      x.fillStyle = "#eceff4"; rr(cx + 18 + LABW, ry + 9, barW, 16, 8);
       x.fillStyle = colOf(r);
-      rr(cx + LABW, y + 8, Math.max(barW * r[1] / max, r[1] ? 6 : 0), 17, 8.5);
-      x.fillStyle = SUM_INK; x.font = F(14, 700);
+      rr(cx + 18 + LABW, ry + 9, Math.max(barW * r[1] / max, r[1] ? 6 : 0), 16, 8);
       x.textAlign = "right";
-      x.fillText(nfmt(r[1]), cx + CW, y + ROW / 2);
+      x.fillStyle = SUM_INK; x.font = F(14, 700);
+      x.fillText(nfmt(r[1]), cx + 18 + LABW + barW + 12 + CNTW, cy);
+      x.fillStyle = SUM_MUTED; x.font = F(12.5);
+      x.fillText(Math.round(r[1] * 100 / sum) + "%", cx + 18 + IW, cy);
       x.textAlign = "left";
-      y += ROW;
+      ry += ROW;
     });
-    return y + GAP;
+    return y + h + 20;
   };
   let yA = TOP;
-  yA = drawSec(CX1, yA, "แยกตามกลุ่มสินค้า", byProd, r => SUM_PROD[r[0]] || SUM_MUTED);
-  if (byBrand.length) yA = drawSec(CX1, yA, "คู่แข่งแยกตามยี่ห้อ", byBrand, r => SUM_BRAND[r[0]] || SUM_BRAND["อื่นๆ"]);
-  if (bySsc.length) drawSec(CX2, TOP, "ลูกค้าแยกตาม SSC", bySsc, () => "#2a78d6");
+  yA = drawSec(CX1, yA, "แยกตามกลุ่มสินค้า", byProd, r => SUM_PROD[r[0]] || SUM_MUTED, "#2a78d6");
+  if (byBrand.length) drawSec(CX1, yA, "คู่แข่งแยกตามยี่ห้อ", byBrand, r => SUM_BRAND[r[0]] || SUM_BRAND["อื่นๆ"], "#d93f3f");
+  if (bySsc.length) drawSec(CX2, TOP, "ลูกค้าแยกตาม SSC", bySsc, () => "#2a78d6", "#2a78d6");
 
   /* ---- ท้ายรูป ---- */
   x.fillStyle = SUM_LINE; x.fillRect(PAD, H - 44, W - PAD * 2, 1);

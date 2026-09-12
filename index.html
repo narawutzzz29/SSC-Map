@@ -2932,26 +2932,27 @@ function drawMiniMap(x, bx, by, bw, bh, list, geo, sat) {
 async function buildSummary() {
   const list = visible();
   const cv = document.createElement("canvas");
-  const W = 1600, PAD = 44, S = 2;             // แนวนอน · S = ความละเอียด 2 เท่า
+  const W = 1920, PAD = 44, S = 2;             // แนวนอน 16:9 · S = ความละเอียด 2 เท่า
   const x = cv.getContext("2d");
 
   /* ---- ข้อมูล ---- */
   const byProd = Object.keys(PRODUCTS).map(p => [p, list.filter(c => c.product === p).length]).filter(r => r[1]);
   const rivals = list.filter(isRival);
   const byBrand = rivals.length ? tally(rivals, c => brandKey(c)) : [];
+  const bySsc = tally(list, c => c.ssc);
   const nProv = new Set(list.map(c => c.province).filter(Boolean)).size;
   const noPin = list.filter(c => !hasPin(c)).length;
   const stale = list.filter(c => { const v = visitState(c); return v === "late" || v === "never"; }).length;
 
-  const ROW = 34, HEAD = 50, KPIH = 96;
-  let rightH = KPIH * 2 + 16 + 18;
-  rightH += HEAD + byProd.length * ROW + 22;
-  if (byBrand.length) rightH += HEAD + byBrand.length * ROW + 22;
-  const H = Math.max(900, 108 + rightH + 56);
-
-  const MAPW = 940, MAPX = PAD, MAPY = 108;
-  const MAPH = H - MAPY - 56 - 40;
+  /* ---- วางผัง: แผนที่ซ้าย · ขวาแบ่งเป็นสองคอลัมน์ รูปจะได้ไม่ยืดยาวลงล่าง ---- */
+  const ROW = 34, HEAD = 50, KPIH = 96, GAP = 22;
+  const MAPX = PAD, MAPY = 108, MAPW = 1000;
   const RX = MAPX + MAPW + 30, RW = W - PAD - RX;
+  const CW = (RW - GAP) / 2, CX1 = RX, CX2 = RX + CW + GAP;
+  const secH = rows => rows.length ? HEAD + rows.length * ROW + GAP : 0;
+  const TOP = MAPY + KPIH * 2 + 16 + 26;
+  const H = Math.max(1080, TOP + Math.max(secH(byProd) + secH(byBrand), secH(bySsc)) + 56);
+  const MAPH = H - MAPY - 56 - 40;
 
   cv.width = W * S; cv.height = H * S;
   x.scale(S, S);
@@ -2984,7 +2985,7 @@ async function buildSummary() {
   }
   const onSat = drawMiniMap(x, MAPX, MAPY, MAPW, MAPH, list, geo, sat);
 
-  let ly = MAPY + MAPH + 22;
+  const ly = MAPY + MAPH + 22;
   let lx = MAPX;
   x.font = F(13.5);
   byProd.forEach(r => {
@@ -3001,47 +3002,48 @@ async function buildSummary() {
              MAPX + MAPW, ly);
   x.textAlign = "left";
 
-  /* ---- ตัวเลขสรุป + กราฟ (ขวา) ---- */
+  /* ---- การ์ดตัวเลข (ขวาบน) ---- */
   const kpi = [["ลูกค้าทั้งหมด", nfmt(list.length), "#2a78d6"],
                ["จังหวัด", nfmt(nProv), "#2a78d6"],
                ["ยังไม่ปักหมุด", nfmt(noPin), noPin ? "#e0a92a" : SUM_MUTED],
                ["ค้างเข้าพบเกิน 6 เดือน", nfmt(stale), stale ? "#d93f3f" : SUM_MUTED]];
-  const kw = (RW - 16) / 2;
   kpi.forEach(([lab, val, col], i) => {
-    const kx = RX + (i % 2) * (kw + 16), ky = MAPY + Math.floor(i / 2) * (KPIH + 16);
-    x.fillStyle = SUM_CARD; rr(kx, ky, kw, KPIH, 14);
+    const kx = i % 2 ? CX2 : CX1, ky = MAPY + Math.floor(i / 2) * (KPIH + 16);
+    x.fillStyle = SUM_CARD; rr(kx, ky, CW, KPIH, 14);
     x.fillStyle = col; x.font = F(34, 700);
     x.fillText(val, kx + 16, ky + 40);
     x.fillStyle = SUM_INK2; x.font = F(13);
     x.fillText(lab, kx + 16, ky + 72);
   });
 
-  let y = MAPY + KPIH * 2 + 16 + 26;
-  const LABW = 150, VALW = 48;
-  const drawSec = (title, rows, colOf) => {
+  /* ---- กราฟแท่ง ---- */
+  const LABW = 132, VALW = 42;
+  const drawSec = (cx, y, title, rows, colOf) => {
     x.fillStyle = SUM_INK; x.font = F(18, 700);
-    x.fillText(title, RX, y + 18);
-    x.fillStyle = SUM_LINE; x.fillRect(RX, y + 34, RW, 1);
+    x.fillText(title, cx, y + 18);
+    x.fillStyle = SUM_LINE; x.fillRect(cx, y + 34, CW, 1);
     y += HEAD;
     const max = Math.max(1, ...rows.map(r => r[1]));
-    const barW = RW - LABW - VALW;
+    const barW = CW - LABW - VALW;
     rows.forEach(r => {
       x.fillStyle = SUM_INK2; x.font = F(14);
-      const t = r[0].length > 17 ? r[0].slice(0, 16) + "…" : r[0];
-      x.fillText(t, RX, y + ROW / 2);
-      x.fillStyle = "#eef2f6"; rr(RX + LABW, y + 8, barW, 17, 8.5);
+      const t = r[0].length > 15 ? r[0].slice(0, 14) + "…" : r[0];
+      x.fillText(t, cx, y + ROW / 2);
+      x.fillStyle = "#eef2f6"; rr(cx + LABW, y + 8, barW, 17, 8.5);
       x.fillStyle = colOf(r);
-      rr(RX + LABW, y + 8, Math.max(barW * r[1] / max, r[1] ? 6 : 0), 17, 8.5);
+      rr(cx + LABW, y + 8, Math.max(barW * r[1] / max, r[1] ? 6 : 0), 17, 8.5);
       x.fillStyle = SUM_INK; x.font = F(14, 700);
       x.textAlign = "right";
-      x.fillText(nfmt(r[1]), RX + RW, y + ROW / 2);
+      x.fillText(nfmt(r[1]), cx + CW, y + ROW / 2);
       x.textAlign = "left";
       y += ROW;
     });
-    y += 22;
+    return y + GAP;
   };
-  drawSec("แยกตามกลุ่มสินค้า", byProd, r => SUM_PROD[r[0]] || SUM_MUTED);
-  if (byBrand.length) drawSec("คู่แข่งแยกตามยี่ห้อ", byBrand, r => SUM_BRAND[r[0]] || SUM_BRAND["อื่นๆ"]);
+  let yA = TOP;
+  yA = drawSec(CX1, yA, "แยกตามกลุ่มสินค้า", byProd, r => SUM_PROD[r[0]] || SUM_MUTED);
+  if (byBrand.length) yA = drawSec(CX1, yA, "คู่แข่งแยกตามยี่ห้อ", byBrand, r => SUM_BRAND[r[0]] || SUM_BRAND["อื่นๆ"]);
+  if (bySsc.length) drawSec(CX2, TOP, "ลูกค้าแยกตาม SSC", bySsc, () => "#2a78d6");
 
   /* ---- ท้ายรูป ---- */
   x.fillStyle = SUM_LINE; x.fillRect(PAD, H - 44, W - PAD * 2, 1);

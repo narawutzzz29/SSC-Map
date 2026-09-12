@@ -1638,17 +1638,35 @@ function agoText(t) {
   if (h < 24) return h + " ชั่วโมงที่แล้ว";
   return Math.round(h / 24) + " วันที่แล้ว";
 }
+/* วาดหน้าแรกครั้งเดียว — เรียกซ้ำได้ไม่มีผล */
+let painted = false;
+function firstPaint() {
+  if (painted) return;
+  painted = true;
+  render();
+  if (!openFromLink()) frame();
+  setHeat(heatMode);
+}
+
 async function initStore() {
   if (!apiBase()) { showSetup(); return; }
-  paintMode("กำลังโหลดข้อมูล…");
+  /* เปิดแอปแล้วเห็นหมุดทันทีจากข้อมูลที่เก็บไว้ในเครื่อง
+     ไม่ต้องนั่งรอเซิร์ฟเวอร์ตอบก่อน แล้วค่อยอัปเดตให้เงียบ ๆ ข้างหลัง */
+  const cached = readCache();
+  if (cached && cached.d.length) {
+    DATA = cached.d;
+    paintMode("กำลังอัปเดต…");
+    firstPaint();
+  } else {
+    paintMode("กำลังโหลดข้อมูล…");
+  }
   try {
     DATA = await api("list");
     paintMode("แชร์ทั้งทีม", "shared");
     keepCache();
+    if (painted) render(); else firstPaint();
   } catch (e) {
-    const cached = readCache();
-    if (cached && cached.d.length) {
-      DATA = cached.d;
+    if (painted) {
       paintMode("ออฟไลน์", "readonly");
       toast("ต่อเซิร์ฟเวอร์ไม่ได้ — แสดงข้อมูลที่บันทึกไว้เมื่อ " + agoText(cached.t), "bad");
     } else {
@@ -4029,7 +4047,7 @@ function openFromLink() {
   return true;
 }
 
-initStore().then(() => { render(); if (!openFromLink()) frame(); setHeat(heatMode); });
+initStore().then(firstPaint);
 addEventListener("focus", () => { if (!busy && !$("veil").classList.contains("on") && !document.getElementById("setup")) reload(true); });
 window.__appRan = 1;
 </script>
@@ -4116,6 +4134,17 @@ window.__fileEnd = 1;
 <script>
 if ("serviceWorker" in navigator) {
   addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  navigator.serviceWorker.addEventListener("message", ev => {
+    if (!ev.data || ev.data.ssc !== "update" || document.getElementById("newver")) return;
+    var b = document.createElement("button");
+    b.id = "newver";
+    b.textContent = "มีเวอร์ชันใหม่ — แตะเพื่ออัปเดต";
+    b.setAttribute("style", "position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:9999;" +
+      "border:0;border-radius:999px;padding:11px 20px;font:600 14px/1 inherit;color:#fff;background:#2a78d6;" +
+      "box-shadow:0 6px 18px rgba(0,0,0,.28);cursor:pointer");
+    b.onclick = function () { location.reload(); };
+    document.body.appendChild(b);
+  });
 }
 </script>
 </body>
